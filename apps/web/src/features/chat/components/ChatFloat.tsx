@@ -4,8 +4,6 @@ import { useRef, useEffect } from "react";
 import type { Message } from "@ai-sdk/react";
 import type { TimeBlock } from "@organizaTUM/shared";
 import { Composer } from "./Composer";
-import { type SelectionSlot } from "@/features/calendar/components/CalendarGrid";
-
 interface ChatFloatProps {
   messages: Message[];
   input: string;
@@ -14,13 +12,11 @@ interface ChatFloatProps {
   isTyping: boolean;
   refineBlock?: TimeBlock | null;
   onClearBlock?: () => void;
-  selection?: SelectionSlot[];
-  onClearSelection?: () => void;
 }
 
 export function ChatFloat({
   messages, input, setInput, onSend, isTyping,
-  refineBlock, onClearBlock, selection, onClearSelection,
+  refineBlock, onClearBlock,
 }: ChatFloatProps) {
   const msgRef = useRef<HTMLDivElement>(null);
 
@@ -56,8 +52,6 @@ export function ChatFloat({
           placeholder="Reply..."
           refineBlock={refineBlock}
           onClearBlock={onClearBlock}
-          selection={selection}
-          onClearSelection={onClearSelection}
         />
       </div>
     </div>

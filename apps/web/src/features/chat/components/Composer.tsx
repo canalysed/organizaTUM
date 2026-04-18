@@ -3,8 +3,6 @@
 import { useRef, useEffect, useState } from "react";
 import type { TimeBlock } from "@organizaTUM/shared";
 import { Icon } from "@/components/Icon";
-import { type SelectionSlot } from "@/features/calendar/components/CalendarGrid";
-
 interface ComposerProps {
   variant: "center" | "float" | "sidebar";
   value: string;
@@ -14,8 +12,6 @@ interface ComposerProps {
   placeholder?: string;
   refineBlock?: TimeBlock | null;
   onClearBlock?: () => void;
-  selection?: SelectionSlot[];
-  onClearSelection?: () => void;
 }
 
 const KIND_COLORS: Record<string, string> = {
@@ -31,7 +27,7 @@ function formatHour(h: number): string {
 
 export function Composer({
   variant, value, onChange, onSend, disabled, placeholder,
-  refineBlock, onClearBlock, selection, onClearSelection,
+  refineBlock, onClearBlock,
 }: ComposerProps) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -87,24 +83,6 @@ export function Composer({
             </div>
           </div>
           <span style={{ marginLeft: "auto", color: "var(--ink-4)", cursor: "pointer", padding: 2, borderRadius: 4, display: "flex", alignItems: "center" }} onClick={onClearBlock}>
-            <Icon name="close" size={12}/>
-          </span>
-        </div>
-      )}
-
-      {/* Selection context chip */}
-      {!refineBlock && selection && selection.length > 0 && (
-        <div style={{ margin: "0 2px 0", padding: "8px 10px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--ink-2)", animation: "fadeUp 180ms both" }}>
-          <span style={{ width: 7, height: 7, borderRadius: 3, flexShrink: 0, background: "var(--ink)" }}/>
-          <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, color: "var(--ink-4)", fontFamily: "var(--font-mono, monospace)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-              Selected time
-            </div>
-            <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {selection.length} slot{selection.length === 1 ? "" : "s"} · {Math.round(selection.reduce((s, x) => s + (x.end - x.start) * 60, 0))} min total
-            </div>
-          </div>
-          <span style={{ marginLeft: "auto", color: "var(--ink-4)", cursor: "pointer", padding: 2, borderRadius: 4, display: "flex", alignItems: "center" }} onClick={onClearSelection}>
             <Icon name="close" size={12}/>
           </span>
         </div>

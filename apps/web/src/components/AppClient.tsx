@@ -14,7 +14,7 @@ import { TweaksPanel } from "./TweaksPanel";
 import { ChatCenter } from "@/features/chat/components/ChatCenter";
 import { ChatFloat } from "@/features/chat/components/ChatFloat";
 import { ChatSidebar } from "@/features/chat/components/ChatSidebar";
-import { CalendarGrid, DAY_NAMES, formatT, type SelectionSlot } from "@/features/calendar/components/CalendarGrid";
+import { CalendarGrid, DAY_NAMES, formatT } from "@/features/calendar/components/CalendarGrid";
 
 type AppState = "landing" | "chatting" | "split";
 type View = "app" | "profile";
@@ -31,7 +31,6 @@ export function AppClient() {
   const [blockStyle, setBlockStyle] = useState<BlockStyleType>("muted");
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [refineBlock, setRefineBlock] = useState<TimeBlock | null>(null);
-  const [selection, setSelection] = useState<SelectionSlot[]>([]);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [initialMessages, setInitialMessages] = useState<Message[]>([]);
 
@@ -55,6 +54,8 @@ export function AppClient() {
   const setCalendar = useCalendarStore((s) => s.setCalendar);
   const setCalendarLoading = useCalendarStore((s) => s.setLoading);
   const updateBlock = useCalendarStore((s) => s.updateBlock);
+  const addBlock = useCalendarStore((s) => s.addBlock);
+  const deleteBlock = useCalendarStore((s) => s.deleteBlock);
 
   const { messages, append, isLoading, data } = useChat({
     api: "/api/chat",
@@ -226,15 +227,12 @@ export function AppClient() {
     let text = input.trim();
     if (refineBlock) {
       text = `[${refineBlock.title}] ${text}`;
-    } else if (selection.length) {
-      text = `[${selection.length} time slot${selection.length === 1 ? "" : "s"}] ${text}`;
     }
     append({ role: "user", content: text });
     setInput("");
     setRefineBlock(null);
-    setSelection([]);
     if (appState === "landing") setAppState("chatting");
-  }, [input, refineBlock, selection, append, appState]);
+  }, [input, refineBlock, append, appState]);
 
   const handleSuggestion = useCallback((s: string) => {
     append({ role: "user", content: s });
@@ -244,7 +242,6 @@ export function AppClient() {
 
   const handleBlockClick = useCallback((block: TimeBlock) => {
     setRefineBlock(block);
-    setSelection([]);
   }, []);
 
   const handleBlockMove = useCallback((blockId: string, newDay: number, newStart: number, newEnd: number) => {
@@ -265,7 +262,6 @@ export function AppClient() {
     if (action === "reset") {
       setAppState("landing");
       setRefineBlock(null);
-      setSelection([]);
     } else if (action === "regenerate") {
       append({ role: "user", content: "Please regenerate and rebalance my schedule." });
     } else if (action === "export") {
@@ -307,8 +303,6 @@ export function AppClient() {
             agentStatus={agentStatus}
             refineBlock={refineBlock}
             onClearBlock={() => setRefineBlock(null)}
-            selection={selection}
-            onSelectionChange={setSelection}
           />
         </div>
 
@@ -322,29 +316,6 @@ export function AppClient() {
           overflow: "hidden",
           animation: "calendarIn 700ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
         }}>
-          <div style={{ display: "flex", justifyContent: "flex-end", flexShrink: 0, marginBottom: 6 }}>
-            <select
-              value={selectedCanteenId ?? ""}
-              onChange={(e) => setSelectedCanteenId(e.target.value || null)}
-              style={{
-                fontSize: 11.5, color: "var(--ink-3)",
-                padding: "4px 8px", borderRadius: 6,
-                border: "1px solid var(--line)",
-                background: "var(--bg-raised)",
-                cursor: "pointer",
-                outline: "none",
-              }}
-            >
-              <option value="">🍽 Mensa off</option>
-              <option value="mensa-garching">Mensa Garching</option>
-              <option value="mensa-lothstr">Mensa Lothstraße</option>
-              <option value="mensa-arcisstr">Mensa Arcisstr.</option>
-              <option value="mensa-leopoldstr">Mensa Leopoldstr.</option>
-              <option value="mensa-martinsried">Mensa Martinsried</option>
-              <option value="mensa-weihenstephan">Mensa Weihenstephan</option>
-              <option value="mensa-pasing">Mensa Pasing</option>
-            </select>
-          </div>
           <CalendarGrid
             calendar={calendar}
             isLoading={calendarLoading}
@@ -354,10 +325,12 @@ export function AppClient() {
             onBlockMove={handleBlockMove}
             selectedId={refineBlock?.id ?? null}
             buildProgress={buildProgress}
-            selection={selection}
-            onSelectionChange={setSelection}
             onImportCsv={() => csvInputRef.current?.click()}
             selectedCanteenId={selectedCanteenId}
+            onCanteenChange={setSelectedCanteenId}
+            onAddBlock={addBlock}
+            onUpdateBlock={(id, updates) => updateBlock(id, updates)}
+            onDeleteBlock={deleteBlock}
           />
         </div>
 
@@ -407,8 +380,6 @@ export function AppClient() {
               isTyping={isLoading}
               refineBlock={refineBlock}
               onClearBlock={() => setRefineBlock(null)}
-              selection={selection}
-              onClearSelection={() => setSelection([])}
             />
           )}
         </div>

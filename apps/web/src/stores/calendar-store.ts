@@ -8,7 +8,9 @@ interface CalendarState {
   setCalendar: (calendar: WeeklyCalendar) => void;
   selectBlock: (block: TimeBlock | null) => void;
   setLoading: (loading: boolean) => void;
-  updateBlock: (blockId: string, updates: Partial<Pick<TimeBlock, "dayOfWeek" | "startTime" | "endTime">>) => void;
+  addBlock: (block: TimeBlock) => void;
+  updateBlock: (blockId: string, updates: Partial<TimeBlock>) => void;
+  deleteBlock: (blockId: string) => void;
   clearCalendar: () => void;
 }
 
@@ -19,6 +21,11 @@ export const useCalendarStore = create<CalendarState>((set) => ({
   setCalendar: (calendar) => set({ calendar }),
   selectBlock: (block) => set({ selectedBlock: block }),
   setLoading: (isLoading) => set({ isLoading }),
+  addBlock: (block) =>
+    set((state) => {
+      if (!state.calendar) return state;
+      return { ...state, calendar: { ...state.calendar, blocks: [...state.calendar.blocks, block] } };
+    }),
   updateBlock: (blockId, updates) =>
     set((state) => {
       if (!state.calendar) return state;
@@ -26,10 +33,16 @@ export const useCalendarStore = create<CalendarState>((set) => ({
         ...state,
         calendar: {
           ...state.calendar,
-          blocks: state.calendar.blocks.map((b) =>
-            b.id === blockId ? { ...b, ...updates } : b
-          ),
+          blocks: state.calendar.blocks.map((b) => b.id === blockId ? { ...b, ...updates } : b),
         },
+      };
+    }),
+  deleteBlock: (blockId) =>
+    set((state) => {
+      if (!state.calendar) return state;
+      return {
+        ...state,
+        calendar: { ...state.calendar, blocks: state.calendar.blocks.filter((b) => b.id !== blockId) },
       };
     }),
   clearCalendar: () => set({ calendar: null, selectedBlock: null, isLoading: false }),

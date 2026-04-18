@@ -165,8 +165,7 @@ function computeLayout(blocks: CalendarBlock[]): LayoutBlock[] {
 }
 
 type DragState =
-  | { kind: "new"; day: number; colTop: number; startY: number; endY: number }
-  | { kind: "block-move"; blockId: string; origDay: number; origStart: number; origEnd: number; startClientX: number; startClientY: number; hourPx: number; hasMoved: boolean };
+  { kind: "block-move"; blockId: string; origDay: number; origStart: number; origEnd: number; startClientX: number; startClientY: number; hourPx: number; hasMoved: boolean };
 
 const inputSt: React.CSSProperties = {
   padding: "7px 10px", fontSize: 13, color: "var(--ink)",
@@ -278,7 +277,6 @@ export function CalendarGrid({
   const calendarRef = useRef(calendar);
   useEffect(() => { calendarRef.current = calendar; }, [calendar]);
 
-  const [liveDrag, setLiveDrag] = useState<{ day: number; startY: number; endY: number } | null>(null);
   const [draftBlock, setDraftBlock] = useState<BlockDraft | null>(null);
   const draftBlockRef = useRef<BlockDraft | null>(null);
   useEffect(() => { draftBlockRef.current = draftBlock; }, [draftBlock]);
@@ -287,7 +285,6 @@ export function CalendarGrid({
   const dayColRefs = useRef<(HTMLDivElement | null)[]>(Array(7).fill(null));
 
   const snap = (h: number) => Math.round(h * 4) / 4;
-  const yToHour = (y: number) => HOUR_START + Math.max(0, Math.min(hours, y / hourPxRef.current));
 
   useEffect(() => {
     const getDayFromX = (clientX: number): number => {
@@ -306,56 +303,36 @@ export function CalendarGrid({
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      if (d.kind === "new") {
-        const y = e.clientY - d.colTop;
-        const clamped = Math.max(0, Math.min(totalHRef.current, y));
-        dragRef.current = { ...d, endY: clamped };
-        setLiveDrag({ day: d.day, startY: d.startY, endY: clamped });
-        return;
+      if (!d.hasMoved) {
+        const dist = Math.hypot(e.clientX - d.startClientX, e.clientY - d.startClientY);
+        if (dist > 5) {
+          d.hasMoved = true;
+          setCursorOverride("grabbing");
+          const init: BlockDraft = { id: d.blockId, day: d.origDay, start: d.origStart, end: d.origEnd };
+          draftBlockRef.current = init;
+          setDraftBlock(init);
+        } else return;
       }
-      if (d.kind === "block-move") {
-        if (!d.hasMoved) {
-          const dist = Math.hypot(e.clientX - d.startClientX, e.clientY - d.startClientY);
-          if (dist > 5) {
-            d.hasMoved = true;
-            setCursorOverride("grabbing");
-            const init: BlockDraft = { id: d.blockId, day: d.origDay, start: d.origStart, end: d.origEnd };
-            draftBlockRef.current = init;
-            setDraftBlock(init);
-          } else return;
-        }
-        const deltaH = (e.clientY - d.startClientY) / d.hourPx;
-        const duration = d.origEnd - d.origStart;
-        const ns = snap(Math.max(HOUR_START, Math.min(HOUR_END - duration, d.origStart + deltaH)));
-        const draft: BlockDraft = { id: d.blockId, day: getDayFromX(e.clientX), start: ns, end: ns + duration };
-        draftBlockRef.current = draft;
-        setDraftBlock({ ...draft });
-      }
+      const deltaH = (e.clientY - d.startClientY) / d.hourPx;
+      const duration = d.origEnd - d.origStart;
+      const ns = snap(Math.max(HOUR_START, Math.min(HOUR_END - duration, d.origStart + deltaH)));
+      const draft: BlockDraft = { id: d.blockId, day: getDayFromX(e.clientX), start: ns, end: ns + duration };
+      draftBlockRef.current = draft;
+      setDraftBlock({ ...draft });
     };
 
-    const onUp = (e: PointerEvent) => {
+    const onUp = () => {
       const d = dragRef.current;
       if (!d) return;
-      if (d.kind === "new") {
-        const t = Math.min(d.startY, d.endY), bot = Math.max(d.startY, d.endY);
-        if (bot - t >= 10) {
-          const sh = snap(yToHour(t)), eh = snap(yToHour(bot));
-          if (eh - sh >= 0.25) {
-            setCreateModal({ day: d.day, start: sh, end: eh });
-          }
-        }
-        setLiveDrag(null);
-      } else if (d.kind === "block-move") {
-        if (!d.hasMoved) {
-          const block = allBlocksRef.current.find(b => b.id === d.blockId);
-          const orig = calendarRef.current?.blocks.find(tb => tb.id === d.blockId);
-          if (block) setSidebarState({ calBlock: block, orig });
-        } else {
-          const draft = draftBlockRef.current;
-          if (draft) onBlockMoveRef.current?.(draft.id, draft.day, draft.start, draft.end);
-        }
-        setDraftBlock(null); draftBlockRef.current = null;
+      if (!d.hasMoved) {
+        const block = allBlocksRef.current.find(b => b.id === d.blockId);
+        const orig = calendarRef.current?.blocks.find(tb => tb.id === d.blockId);
+        if (block) setSidebarState({ calBlock: block, orig });
+      } else {
+        const draft = draftBlockRef.current;
+        if (draft) onBlockMoveRef.current?.(draft.id, draft.day, draft.start, draft.end);
       }
+      setDraftBlock(null); draftBlockRef.current = null;
       dragRef.current = null;
       setCursorOverride("");
     };
@@ -369,16 +346,6 @@ export function CalendarGrid({
       document.removeEventListener("pointercancel", onUp);
     };
   }, []);
-
-  const startNewDrag = (dayIdx: number, e: React.PointerEvent<HTMLDivElement>) => {
-    const colEl = dayColRefs.current[dayIdx];
-    if (!colEl) return;
-    const rect = colEl.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    dragRef.current = { kind: "new", day: dayIdx, colTop: rect.top, startY: y, endY: y };
-    setLiveDrag({ day: dayIdx, startY: y, endY: y });
-    setCursorOverride("crosshair");
-  };
 
   const startBlockDrag = (e: React.PointerEvent, block: CalendarBlock) => {
     e.stopPropagation();
@@ -555,20 +522,14 @@ export function CalendarGrid({
             const dayMealBlocks = !isWeekend ? mealBlocks.filter(b => b.day === dayIdx) : [];
             const dayBlocks = [...calendarDayBlocks, ...dayMealBlocks];
             const layout = computeLayout(dayBlocks);
-            const ld = liveDrag?.day === dayIdx ? liveDrag : null;
-
             return (
               <div
                 key={dayIdx}
                 ref={el => { dayColRefs.current[dayIdx] = el; }}
                 style={{
                   position: "relative", borderLeft: "1px solid var(--line-soft)",
-                  height: totalHeight, cursor: "crosshair",
+                  height: totalHeight,
                   background: isWeekend ? "color-mix(in oklab, var(--bg-sunken) 22%, transparent)" : "transparent",
-                }}
-                onPointerDown={e => {
-                  if ((e.target as HTMLElement).closest("[data-block]")) return;
-                  startNewDrag(dayIdx, e);
                 }}
               >
                 {/* Hour grid lines */}
@@ -578,11 +539,6 @@ export function CalendarGrid({
                     <div style={{ position: "absolute", left: 0, right: 0, top: i * hourPx + hourPx / 2, borderTop: "1px dotted color-mix(in oklab, var(--line-soft) 35%, transparent)", pointerEvents: "none" }}/>
                   </span>
                 ))}
-
-                {/* Live draw preview */}
-                {ld && (
-                  <div style={{ position: "absolute", left: 3, right: 3, top: Math.min(ld.startY, ld.endY), height: Math.abs(ld.endY - ld.startY), background: "color-mix(in oklab, var(--tum) 12%, transparent)", border: "1.5px dashed var(--tum-line)", borderRadius: 8, pointerEvents: "none", zIndex: 5 }}/>
-                )}
 
                 {/* Skeleton loaders */}
                 {isLoading && !calendar && SKELETON_SCHEDULE.filter(s => s.day === dayIdx).map((s, i) => (
