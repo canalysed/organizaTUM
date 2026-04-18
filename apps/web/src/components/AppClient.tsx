@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useChat, type Message } from "@ai-sdk/react";
-import { WeeklyCalendarSchema, UserNoteSchema, UserIdentitySchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
+import { WeeklyCalendarSchema, UserNoteSchema, UserIdentitySchema, UserProfileSchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
 import { useUserStore } from "@/stores/user-store";
 import { useCalendarStore } from "@/stores/calendar-store";
@@ -41,6 +41,7 @@ export function AppClient() {
   const setSessionId = useUserStore((s) => s.setSessionId);
   const setNotes = useUserStore((s) => s.setNotes);
   const setIdentity = useUserStore((s) => s.setIdentity);
+  const setProfile = useUserStore((s) => s.setProfile);
   const selectedCanteenId = useUserStore((s) => s.selectedCanteenId);
   const setSelectedCanteenId = useUserStore((s) => s.setSelectedCanteenId);
   const darkMode = useUserStore((s) => s.darkMode);
@@ -141,6 +142,14 @@ export function AppClient() {
       .then((json: { identity: unknown }) => {
         const p = UserIdentitySchema.safeParse(json.identity);
         if (p.success) setIdentity(p.data);
+      })
+      .catch(() => {});
+
+    fetch(`/api/user/profile?sessionId=${sessionId}`)
+      .then((r) => r.json())
+      .then((json: { profile: unknown }) => {
+        const p = UserProfileSchema.safeParse(json.profile);
+        if (p.success) setProfile(p.data);
       })
       .catch(() => {});
 

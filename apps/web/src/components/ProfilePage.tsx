@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Icon } from "./Icon";
 import { useUserStore } from "@/stores/user-store";
 import type { UserNote, NoteCategory, UserIdentity, UserProfile } from "@organizaTUM/shared";
@@ -67,22 +67,28 @@ export function ProfilePage({ onClose }: ProfilePageProps) {
   };
 
   // Preferences state (Preferences tab)
-  const learningStyle = profile?.learningStyle ?? "spaced-repetition";
-  const wakeUpTime = profile?.wakeUpTime ?? "08:00";
-  const sleepTime = profile?.sleepTime ?? "23:00";
-  const preferredStudyTime = profile?.preferredStudyTime ?? "afternoon";
-  const weekendPreference = profile?.weekendPreference ?? "light";
-  const preferredMensa = profile?.preferredMensa ?? "";
   const dietaryRestrictions = profile?.mensaPreferences?.dietaryRestrictions ?? [];
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [prefsDraft, setPrefsDraft] = useState({
-    learningStyle,
-    wakeUpTime,
-    sleepTime,
-    preferredStudyTime,
-    weekendPreference,
-    preferredMensa,
+    learningStyle: profile?.learningStyle ?? "spaced-repetition",
+    wakeUpTime: profile?.wakeUpTime ?? "08:00",
+    sleepTime: profile?.sleepTime ?? "23:00",
+    preferredStudyTime: profile?.preferredStudyTime ?? "afternoon",
+    weekendPreference: profile?.weekendPreference ?? "light",
+    preferredMensa: profile?.preferredMensa ?? "",
   });
+
+  useEffect(() => {
+    if (!profile) return;
+    setPrefsDraft({
+      learningStyle: profile.learningStyle,
+      wakeUpTime: profile.wakeUpTime,
+      sleepTime: profile.sleepTime,
+      preferredStudyTime: profile.preferredStudyTime,
+      weekendPreference: profile.weekendPreference,
+      preferredMensa: profile.preferredMensa ?? "",
+    });
+  }, [profile]);
 
   const handlePrefsSave = async () => {
     if (!sessionId || !profile) return;

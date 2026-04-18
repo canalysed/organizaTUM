@@ -343,82 +343,56 @@ export function AuthPage() {
 
             {/* ── Sign up step 3 ── */}
             {tab === "signup" && signupStep === 3 && (
-              <form onSubmit={handleSignUp} style={{ display: "flex", flexDirection: "column", gap: 20, animation: anim }}>
+              <form onSubmit={handleSignUp} style={{ display: "flex", flexDirection: "column", gap: 14, animation: anim }}>
                 <StepIndicator step={3} total={3} />
 
                 <Field label="Learning style">
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
                     <OptionCard
                       selected={learningStyle === "spaced-repetition"}
                       onClick={() => setLearningStyle("spaced-repetition")}
                       title="Spaced repetition"
-                      description="Short sessions spread across multiple days."
+                      description="Short sessions, multiple days."
                     />
                     <OptionCard
                       selected={learningStyle === "deep-session"}
                       onClick={() => setLearningStyle("deep-session")}
                       title="Deep sessions"
-                      description="Longer blocks, fewer days per week."
+                      description="Long blocks, fewer days."
                     />
                   </div>
                 </Field>
 
                 <Field label="Daily window">
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Wake-up time</span>
-                      <input
-                        type="time"
-                        value={wakeUpTime}
-                        onChange={(e) => setWakeUpTime(e.target.value)}
-                        style={inputStyle}
-                      />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Wake-up</span>
+                      <input type="time" value={wakeUpTime} onChange={(e) => setWakeUpTime(e.target.value)} style={inputStyle} />
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Sleep time</span>
-                      <input
-                        type="time"
-                        value={sleepTime}
-                        onChange={(e) => setSleepTime(e.target.value)}
-                        style={inputStyle}
-                      />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Sleep</span>
+                      <input type="time" value={sleepTime} onChange={(e) => setSleepTime(e.target.value)} style={inputStyle} />
                     </div>
                   </div>
                 </Field>
 
                 <Field label="Study timing">
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7 }}>
                     {(["morning", "afternoon", "evening"] as const).map((t) => (
-                      <OptionCard
-                        key={t}
-                        selected={studyTiming === t}
-                        onClick={() => setStudyTiming(t)}
-                        title={t.charAt(0).toUpperCase() + t.slice(1)}
-                      />
+                      <OptionCard key={t} selected={studyTiming === t} onClick={() => setStudyTiming(t)}
+                        title={t.charAt(0).toUpperCase() + t.slice(1)} />
                     ))}
                   </div>
                 </Field>
 
                 <Field label="Weekend preference">
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                    <OptionCard
-                      selected={weekendPref === "free"}
-                      onClick={() => setWeekendPref("free")}
-                      title="Free"
-                      description="No studying on weekends."
-                    />
-                    <OptionCard
-                      selected={weekendPref === "light"}
-                      onClick={() => setWeekendPref("light")}
-                      title="Light"
-                      description="Max 2 hours per day."
-                    />
-                    <OptionCard
-                      selected={weekendPref === "full"}
-                      onClick={() => setWeekendPref("full")}
-                      title="Full"
-                      description="Treat weekends like weekdays."
-                    />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7 }}>
+                    <OptionCard selected={weekendPref === "free"} onClick={() => setWeekendPref("free")}
+                      title="Free" description="No studying." />
+                    <OptionCard selected={weekendPref === "light"} onClick={() => setWeekendPref("light")}
+                      title="Light" description="Max 2h/day." />
+                    <OptionCard selected={weekendPref === "full"} onClick={() => setWeekendPref("full")}
+                      title="Full" description="Like weekdays." />
                   </div>
                 </Field>
 
@@ -507,7 +481,7 @@ function OptionCard({
       type="button"
       onClick={onClick}
       style={{
-        padding: "10px 12px",
+        padding: "8px 10px",
         color: "var(--ink)",
         background: "var(--bg-raised)",
         border: selected ? "2px solid var(--ink)" : "1px solid var(--line)",
@@ -518,9 +492,9 @@ function OptionCard({
         fontFamily: "inherit",
       }}
     >
-      <div style={{ fontWeight: selected ? 600 : 500, fontSize: 13 }}>{title}</div>
+      <div style={{ fontWeight: selected ? 600 : 500, fontSize: 12 }}>{title}</div>
       {description && (
-        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 3, fontWeight: 400, lineHeight: 1.35 }}>
+        <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2, fontWeight: 400, lineHeight: 1.3 }}>
           {description}
         </div>
       )}
