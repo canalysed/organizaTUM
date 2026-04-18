@@ -12,12 +12,12 @@ import {
   type NoteCategory,
   type UserIdentity,
 } from "@organizaTUM/shared";
-import { supabaseAdmin } from "./supabase-admin";
+import { getSupabaseAdmin } from "./supabase-admin";
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 export async function ensureSession(sessionId: string): Promise<void> {
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from("sessions")
     .upsert({ id: sessionId, updated_at: new Date().toISOString() }, { onConflict: "id" });
 }
@@ -25,7 +25,7 @@ export async function ensureSession(sessionId: string): Promise<void> {
 // ── User Profile ──────────────────────────────────────────────────────────────
 
 export async function getProfile(sessionId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await getSupabaseAdmin()
     .from("user_profiles")
     .select("profile")
     .eq("session_id", sessionId)
@@ -38,7 +38,7 @@ export async function getProfile(sessionId: string): Promise<UserProfile | null>
 }
 
 export async function saveProfile(sessionId: string, profile: UserProfile): Promise<void> {
-  await supabaseAdmin.from("user_profiles").upsert(
+  await getSupabaseAdmin().from("user_profiles").upsert(
     { session_id: sessionId, profile, updated_at: new Date().toISOString() },
     { onConflict: "session_id" },
   );
@@ -50,7 +50,7 @@ export async function getCalendar(
   sessionId: string,
   weekStart?: string,
 ): Promise<WeeklyCalendar | null> {
-  let query = supabaseAdmin
+  let query = getSupabaseAdmin()
     .from("weekly_calendars")
     .select("calendar_data")
     .eq("session_id", sessionId);
@@ -71,7 +71,7 @@ export async function getCalendar(
 
 export async function saveCalendar(sessionId: string, calendar: WeeklyCalendar): Promise<void> {
   const weekStart = calendar.weekStart.slice(0, 10); // YYYY-MM-DD
-  await supabaseAdmin.from("weekly_calendars").upsert(
+  await getSupabaseAdmin().from("weekly_calendars").upsert(
     {
       session_id: sessionId,
       week_start: weekStart,
@@ -82,7 +82,7 @@ export async function saveCalendar(sessionId: string, calendar: WeeklyCalendar):
 }
 
 export async function getCalendarHistory(sessionId: string): Promise<WeeklyCalendar[]> {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await getSupabaseAdmin()
     .from("weekly_calendars")
     .select("calendar_data")
     .eq("session_id", sessionId)
@@ -99,7 +99,7 @@ export async function getCalendarHistory(sessionId: string): Promise<WeeklyCalen
 // ── Chat Messages ─────────────────────────────────────────────────────────────
 
 export async function getMessages(sessionId: string): Promise<ChatMessage[]> {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await getSupabaseAdmin()
     .from("chat_messages")
     .select("role, content")
     .eq("session_id", sessionId)
@@ -123,11 +123,11 @@ export async function saveMessages(
     role: m.role,
     content: m.content,
   }));
-  await supabaseAdmin.from("chat_messages").insert(rows);
+  await getSupabaseAdmin().from("chat_messages").insert(rows);
 }
 
 export async function clearMessages(sessionId: string): Promise<void> {
-  await supabaseAdmin.from("chat_messages").delete().eq("session_id", sessionId);
+  await getSupabaseAdmin().from("chat_messages").delete().eq("session_id", sessionId);
 }
 
 // ── Course Analysis ───────────────────────────────────────────────────────────
@@ -135,7 +135,7 @@ export async function clearMessages(sessionId: string): Promise<void> {
 export async function getCourseAnalysis(
   sessionId: string,
 ): Promise<CourseAnalysis[] | null> {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await getSupabaseAdmin()
     .from("course_analysis")
     .select("*")
     .eq("session_id", sessionId)
@@ -174,7 +174,7 @@ export async function saveCourseAnalysis(
     priority_score: a.priorityScore,
   }));
 
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from("course_analysis")
     .upsert(rows, { onConflict: "session_id,course_id" });
 }
@@ -182,7 +182,7 @@ export async function saveCourseAnalysis(
 // ── User Notes ────────────────────────────────────────────────────────────────
 
 export async function getNotes(sessionId: string): Promise<UserNote[]> {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await getSupabaseAdmin()
     .from("user_notes")
     .select("*")
     .eq("session_id", sessionId)
@@ -209,7 +209,7 @@ export async function createNote(
   data: { category: NoteCategory; content: string; source: "onboarding" | "refinement" | "manual" },
 ): Promise<UserNote> {
   const now = new Date().toISOString();
-  const { data: row, error } = await supabaseAdmin
+  const { data: row, error } = await getSupabaseAdmin()
     .from("user_notes")
     .insert({
       session_id: sessionId,
@@ -240,7 +240,7 @@ export async function updateNote(
   sessionId: string,
   updates: { content?: string; category?: NoteCategory },
 ): Promise<UserNote> {
-  const { data: row, error } = await supabaseAdmin
+  const { data: row, error } = await getSupabaseAdmin()
     .from("user_notes")
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", noteId)
@@ -262,7 +262,7 @@ export async function updateNote(
 }
 
 export async function deleteNote(noteId: string, sessionId: string): Promise<void> {
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from("user_notes")
     .delete()
     .eq("id", noteId)
@@ -272,7 +272,7 @@ export async function deleteNote(noteId: string, sessionId: string): Promise<voi
 // ── User Identity ─────────────────────────────────────────────────────────────
 
 export async function getIdentity(sessionId: string): Promise<UserIdentity | null> {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await getSupabaseAdmin()
     .from("user_identity")
     .select("*")
     .eq("session_id", sessionId)
@@ -296,7 +296,7 @@ export async function saveIdentity(
   sessionId: string,
   identity: Omit<UserIdentity, "sessionId">,
 ): Promise<void> {
-  await supabaseAdmin.from("user_identity").upsert(
+  await getSupabaseAdmin().from("user_identity").upsert(
     {
       session_id: sessionId,
       full_name: identity.fullName ?? null,
