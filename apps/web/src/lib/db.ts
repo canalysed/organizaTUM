@@ -90,7 +90,7 @@ export async function getCalendarHistory(sessionId: string): Promise<WeeklyCalen
 
   if (error || !data) return [];
 
-  return data.flatMap((row) => {
+  return data.flatMap((row: Record<string, unknown>) => {
     const parsed = WeeklyCalendarSchema.safeParse(row.calendar_data);
     return parsed.success ? [parsed.data] : [];
   });
@@ -107,7 +107,7 @@ export async function getMessages(sessionId: string): Promise<ChatMessage[]> {
 
   if (error || !data) return [];
 
-  return data.map((row) => ({
+  return data.map((row: Record<string, unknown>) => ({
     role: row.role as ChatMessage["role"],
     content: row.content as string,
   }));
@@ -143,7 +143,7 @@ export async function getCourseAnalysis(
 
   if (error || !data || data.length === 0) return null;
 
-  const parsed = data.flatMap((row) => {
+  const parsed = data.flatMap((row: Record<string, unknown>) => {
     const result = CourseAnalysisSchema.safeParse({
       courseId: row.course_id,
       courseName: row.course_name,
@@ -190,7 +190,7 @@ export async function getNotes(sessionId: string): Promise<UserNote[]> {
 
   if (error || !data) return [];
 
-  return data.flatMap((row) => {
+  return data.flatMap((row: Record<string, unknown>) => {
     const parsed = UserNoteSchema.safeParse({
       id: row.id,
       sessionId: row.session_id,

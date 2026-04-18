@@ -19,7 +19,7 @@ export function createServerSupabaseClient(cookieStore: ReadonlyRequestCookies) 
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               (cookieStore as unknown as { set: (name: string, value: string, options: unknown) => void }).set(name, value, options);
