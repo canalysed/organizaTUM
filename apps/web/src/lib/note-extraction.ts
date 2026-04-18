@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { model } from "@/lib/bedrock-client";
+import { getModel } from "@/lib/bedrock-client";
 import { NoteExtractionSchema, type NoteExtraction, type ChatMessage } from "@organizaTUM/shared";
 import { noteExtractionPrompt } from "@/prompts/note-extraction";
 import { createNote } from "@/lib/db";
@@ -18,7 +18,7 @@ export async function extractAndSaveNotes(
       .join("\n");
 
     const result = await generateObject({
-      model,
+      model: getModel(),
       schema: NoteExtractionSchema,
       messages: [
         { role: "system", content: noteExtractionPrompt(context) },
