@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
 import { WeeklyCalendarSchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
 import { useUserStore } from "@/stores/user-store";
@@ -32,6 +32,7 @@ export function AppClient() {
   const setAgentPhase = useUserStore((s) => s.setAgentPhase);
   const agentPhase = useUserStore((s) => s.agentPhase);
   const calendar = useCalendarStore((s) => s.calendar);
+  const calendarLoading = useCalendarStore((s) => s.isLoading);
   const setCalendar = useCalendarStore((s) => s.setCalendar);
   const setCalendarLoading = useCalendarStore((s) => s.setLoading);
   const updateBlock = useCalendarStore((s) => s.updateBlock);
@@ -45,7 +46,10 @@ export function AppClient() {
       const event = item as { type: string; payload: unknown };
       if (event.type === "phase") {
         setAgentPhase(event.payload as AgentPhase);
-        if (event.payload === "scheduling" || event.payload === "analysis") {
+        if (event.payload === "scheduling") {
+          setCalendarLoading(true);
+          setAppState("split"); // pre-open split to show skeleton
+        } else if (event.payload === "analysis") {
           setCalendarLoading(true);
         }
       }
@@ -60,19 +64,21 @@ export function AppClient() {
     }
   }, [data, setAgentPhase, setCalendar, setCalendarLoading]);
 
-  // Animate build progress when entering split view
+  // Animate build progress each time a fresh calendar arrives (not on per-block edits)
+  const lastCalendarIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (appState === "split") {
-      setBuildProgress(0);
-      let p = 0;
-      const iv = setInterval(() => {
-        p += 0.07;
-        if (p >= 1) { p = 1; clearInterval(iv); }
-        setBuildProgress(p);
-      }, 70);
-      return () => clearInterval(iv);
-    }
-  }, [appState]);
+    if (!calendar) return;
+    if (calendar.id === lastCalendarIdRef.current) return;
+    lastCalendarIdRef.current = calendar.id;
+    setBuildProgress(0);
+    let p = 0;
+    const iv = setInterval(() => {
+      p += 0.07;
+      if (p >= 1) { p = 1; clearInterval(iv); }
+      setBuildProgress(p);
+    }, 70);
+    return () => clearInterval(iv);
+  }, [calendar]);
 
   const handleSend = useCallback(() => {
     if (!input.trim()) return;
@@ -179,6 +185,7 @@ export function AppClient() {
               <div style={{ padding: "16px 20px 20px 12px", height: "100%", overflow: "hidden", animation: "calendarIn 700ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both" }}>
                 <CalendarGrid
                   calendar={calendar}
+                  isLoading={calendarLoading}
                   density={density}
                   blockStyle={blockStyle}
                   onBlockClick={handleBlockClick}

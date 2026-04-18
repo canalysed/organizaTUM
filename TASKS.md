@@ -48,9 +48,9 @@ There is no `apps/agent`. Everything runs inside `apps/web` as Next.js route han
 - [x] Build `/api/chat/route.ts` — calls LangGraph directly, streams response
 - [x] Render chat messages with progressive status indicators
 - [x] Skeleton/placeholder CalendarPanel
-- [ ] Integrate FullCalendar.js — replace placeholder `CalendarView` with real FullCalendar component
-- [ ] Render WeeklyCalendar data as time grid blocks with color coding by block type
-- [ ] Skeleton loaders for calendar while agent generates
+- [x] Integrate FullCalendar.js — replaced with custom CalendarGrid (7-day, drag-drop, overlap layout)
+- [x] Render WeeklyCalendar data as time grid blocks with color coding by block type
+- [x] Skeleton loaders for calendar while agent generates
 
 ---
 
