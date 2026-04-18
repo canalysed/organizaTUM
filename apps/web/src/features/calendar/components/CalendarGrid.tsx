@@ -48,7 +48,7 @@ interface BlockDraft { id: string; day: number; start: number; end: number; }
 
 interface MealItem { name: string; price?: number; }
 interface SidebarState { calBlock: CalendarBlock; orig?: TimeBlock; }
-interface CreateModalState { day: number; start: number; end: number; }
+interface CreateModalState { day: number; start: number; end: number; monday: Date; }
 
 interface CalendarGridProps {
   calendar: WeeklyCalendar | null;
@@ -76,6 +76,16 @@ export const KIND_META: Record<string, { label: string; color: string; bg: strin
   break:    { label: "Break",    color: "var(--break)",    bg: "var(--break-bg)"    },
 };
 
+const CANTEEN_NAMES: Record<string, string> = {
+  "mensa-garching":      "Mensa Garching",
+  "mensa-lothstr":       "Mensa Lothstraße",
+  "mensa-arcisstr":      "Mensa Arcisstraße",
+  "mensa-leopoldstr":    "Mensa Leopoldstraße",
+  "mensa-martinsried":   "Mensa Martinsried",
+  "mensa-weihenstephan": "Mensa Weihenstephan",
+  "mensa-pasing":        "Mensa Pasing",
+};
+
 const KIND_TO_TYPE: Record<string, BlockType> = {
   lecture: "lecture", exercise: "exercise", study: "study",
   meal: "meal", leisure: "leisure", break: "break",
@@ -99,15 +109,23 @@ export function formatT(h: number): string {
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 function toCalendarBlocks(cal: WeeklyCalendar): CalendarBlock[] {
-  return cal.blocks
-    .filter((b) => DAY_MAP[b.dayOfWeek] !== undefined)
-    .map((b) => ({
-      id: b.id, day: DAY_MAP[b.dayOfWeek],
+  const result: CalendarBlock[] = [];
+  for (const b of cal.blocks) {
+    if (DAY_MAP[b.dayOfWeek] === undefined) continue;
+    const base = {
       start: parseTime(b.startTime), end: parseTime(b.endTime),
       kind: (TYPE_TO_KIND[b.type] ?? "study") as CalendarBlock["kind"],
-      title: b.title, where: b.location,
-      date: b.date,
-    }));
+      title: b.title, where: b.location, date: b.date,
+    };
+    if (b.notes === "daily") {
+      for (let d = 0; d < 7; d++) {
+        result.push({ ...base, id: `${b.id}-d${d}`, day: d });
+      }
+    } else {
+      result.push({ ...base, id: b.id, day: DAY_MAP[b.dayOfWeek] });
+    }
+  }
+  return result;
 }
 
 function getWeekMonday(offset: number): Date {
@@ -184,7 +202,9 @@ export function CalendarGrid({
 
   const gridBodyRef = useRef<HTMLDivElement>(null);
   const [dynamicHourPx, setDynamicHourPx] = useState(0);
-  const hourPx = dynamicHourPx > 0 ? dynamicHourPx : (density === "compact" ? 44 : 62);
+  const hourPx = dynamicHourPx > 0
+    ? dynamicHourPx * (hours + 2) / hours
+    : (density === "compact" ? 50 : 70);
   const totalHeight = hourPx * hours;
 
   useLayoutEffect(() => {
@@ -241,8 +261,9 @@ export function CalendarGrid({
     return () => { cancelled = true; };
   }, [selectedCanteenId, weekOffset]);
 
-  const mealBlocks = useMemo<CalendarBlock[]>(() =>
-    Object.entries(weekMeals).flatMap(([dayStr, meals]) => {
+  const mealBlocks = useMemo<CalendarBlock[]>(() => {
+    const canteenName = selectedCanteenId ? (CANTEEN_NAMES[selectedCanteenId] ?? selectedCanteenId) : undefined;
+    return Object.entries(weekMeals).flatMap(([dayStr, meals]) => {
       if (!meals.length) return [];
       const dayIdx = parseInt(dayStr);
       return [{
@@ -250,11 +271,11 @@ export function CalendarGrid({
         start: LUNCH_START, end: LUNCH_END,
         kind: "meal" as const,
         title: "Lunch",
-        where: `${meals.length} dishes available`,
+        where: canteenName,
         dishes: meals,
       }];
-    }),
-  [weekMeals]);
+    });
+  }, [weekMeals, selectedCanteenId]);
 
   const mealBlocksRef = useRef(mealBlocks);
   useEffect(() => { mealBlocksRef.current = mealBlocks; }, [mealBlocks]);
@@ -382,7 +403,7 @@ export function CalendarGrid({
               onChange={(e) => onCanteenChange(e.target.value || null)}
               style={{
                 fontSize: 11.5, color: selectedCanteenId ? "var(--ink-2)" : "var(--ink-3)",
-                padding: "5px 8px", borderRadius: 6,
+                padding: "5px 10px", borderRadius: 6, height: 28,
                 border: "1px solid var(--line)",
                 background: selectedCanteenId ? "color-mix(in oklab, var(--meal-bg) 80%, var(--bg-raised))" : "var(--surface)",
                 cursor: "pointer", outline: "none", fontFamily: "inherit",
@@ -423,7 +444,7 @@ export function CalendarGrid({
           )}
           {onAddBlock && (
             <button
-              onClick={() => setCreateModal({ day: todayIdx >= 0 ? todayIdx : 0, start: 10, end: 11 })}
+              onClick={() => setCreateModal({ day: todayIdx >= 0 ? todayIdx : 0, start: 10, end: 11, monday })}
               style={{
                 display: "flex", alignItems: "center", gap: 4,
                 fontSize: 11.5, color: "var(--ink-2)",
@@ -494,8 +515,8 @@ export function CalendarGrid({
       </div>
 
       {/* ── Grid body ───────────────────────────────────────────────────── */}
-      <div ref={gridBodyRef} style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, height: "100%" }}>
+      <div ref={gridBodyRef} style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative" }} className="scroll">
+        <div style={{ display: "grid", gridTemplateColumns: gridCols }}>
 
           {/* Time labels column */}
           <div style={{ position: "relative", borderRight: "1px solid var(--line-soft)", height: totalHeight }}>
@@ -594,8 +615,10 @@ export function CalendarGrid({
         {/* Block sidebar */}
         {sidebarState && (
           <BlockSidebar
+            key={sidebarState.calBlock.id}
             calBlock={sidebarState.calBlock}
             orig={sidebarState.orig}
+            isWeekend={sidebarState.calBlock.day >= WEEKEND_START}
             onClose={() => setSidebarState(null)}
             onRequestChange={(block) => { onBlockClick(block); setSidebarState(null); }}
             onUpdate={(id, updates) => { onUpdateBlock?.(id, updates); setSidebarState(null); }}
@@ -610,6 +633,7 @@ export function CalendarGrid({
           initialDay={createModal.day}
           initialStart={createModal.start}
           initialEnd={createModal.end}
+          monday={createModal.monday}
           onSubmit={(block) => { onAddBlock?.(block); setCreateModal(null); }}
           onCancel={() => setCreateModal(null)}
         />
@@ -698,9 +722,10 @@ function Block({
 
 /* ── Block sidebar ────────────────────────────────────────────────────────── */
 
-function BlockSidebar({ calBlock, orig, onClose, onRequestChange, onUpdate, onDelete }: {
+function BlockSidebar({ calBlock, orig, isWeekend, onClose, onRequestChange, onUpdate, onDelete }: {
   calBlock: CalendarBlock;
   orig?: TimeBlock;
+  isWeekend?: boolean;
   onClose: () => void;
   onRequestChange: (block: TimeBlock) => void;
   onUpdate: (blockId: string, updates: Partial<TimeBlock>) => void;
@@ -737,12 +762,20 @@ function BlockSidebar({ calBlock, orig, onClose, onRequestChange, onUpdate, onDe
 
   return (
     <div style={{
-      position: "absolute", right: 0, top: 0, bottom: 0, width: 268,
+      position: "absolute",
+      ...(isWeekend ? { left: 0 } : { right: 0 }),
+      top: 0, bottom: 0, width: 268,
       background: "var(--bg-raised)",
-      borderLeft: "1px solid var(--line)",
+      ...(isWeekend
+        ? { borderRight: "1px solid var(--line)" }
+        : { borderLeft: "1px solid var(--line)" }),
       zIndex: 20, display: "flex", flexDirection: "column",
-      animation: "slideInRight 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
-      boxShadow: "-4px 0 16px color-mix(in oklab, var(--ink) 8%, transparent)",
+      animation: isWeekend
+        ? "slideInLeft 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both"
+        : "slideInRight 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
+      boxShadow: isWeekend
+        ? "4px 0 16px color-mix(in oklab, var(--ink) 8%, transparent)"
+        : "-4px 0 16px color-mix(in oklab, var(--ink) 8%, transparent)",
     }}>
       {/* Header */}
       <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid var(--line-soft)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -850,19 +883,34 @@ function SidebarField({ label, children }: { label: string; children: React.Reac
 
 /* ── Create Block Modal ───────────────────────────────────────────────────── */
 
-function CreateBlockModal({ initialDay, initialStart, initialEnd, onSubmit, onCancel }: {
+type Recurrence = "once" | "daily" | "weekly" | "monthly";
+
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function dayIdxFromDateStr(s: string): number {
+  const dow = new Date(s + "T12:00:00").getDay();
+  return dow === 0 ? 6 : dow - 1;
+}
+
+function CreateBlockModal({ initialDay, initialStart, initialEnd, monday, onSubmit, onCancel }: {
   initialDay: number;
   initialStart: number;
   initialEnd: number;
+  monday: Date;
   onSubmit: (block: TimeBlock) => void;
   onCancel: () => void;
 }) {
+  const initDate = new Date(monday);
+  initDate.setDate(monday.getDate() + initialDay);
+
   const [kind, setKind] = useState<CalendarBlock["kind"]>("study");
   const [title, setTitle] = useState("");
   const [location, setLocation] = useState("");
-  const [day, setDay] = useState(initialDay);
+  const [dateStr, setDateStr] = useState(toLocalDateStr(initDate));
   const [startStr, setStartStr] = useState(formatT(initialStart));
   const [endStr, setEndStr] = useState(formatT(initialEnd));
+  const [recurrence, setRecurrence] = useState<Recurrence>("weekly");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
@@ -873,14 +921,17 @@ function CreateBlockModal({ initialDay, initialStart, initialEnd, onSubmit, onCa
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
+    const dayIdx = dayIdxFromDateStr(dateStr);
     const block: TimeBlock = {
       id: crypto.randomUUID(),
       type: (KIND_TO_TYPE[kind] ?? "study") as BlockType,
       title: title.trim(),
-      dayOfWeek: DAY_NAMES[day] as DayOfWeek,
+      dayOfWeek: DAY_NAMES[dayIdx] as DayOfWeek,
       startTime: startStr,
       endTime: endStr,
       location: location.trim() || undefined,
+      date: recurrence === "once" ? dateStr : undefined,
+      notes: recurrence === "daily" || recurrence === "monthly" ? recurrence : undefined,
       isFixed: false,
     };
     onSubmit(block);
@@ -918,10 +969,8 @@ function CreateBlockModal({ initialDay, initialStart, initialEnd, onSubmit, onCa
               <input required value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Linear Algebra lecture" style={inputSt} autoFocus/>
             </SidebarField>
 
-            <SidebarField label="Day">
-              <select value={day} onChange={e => setDay(Number(e.target.value))} style={{ ...inputSt, appearance: "none" }}>
-                {ALL_DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
-              </select>
+            <SidebarField label="Date">
+              <input type="date" required value={dateStr} onChange={e => setDateStr(e.target.value)} style={inputSt}/>
             </SidebarField>
 
             <SidebarField label="Time">
@@ -934,6 +983,28 @@ function CreateBlockModal({ initialDay, initialStart, initialEnd, onSubmit, onCa
 
             <SidebarField label="Location (optional)">
               <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Room or building…" style={inputSt}/>
+            </SidebarField>
+
+            <SidebarField label="Repeat">
+              <div style={{ display: "flex", gap: 6 }}>
+                {(["once", "daily", "weekly", "monthly"] as Recurrence[]).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setRecurrence(r)}
+                    style={{
+                      flex: 1, padding: "6px 2px", borderRadius: 7, fontSize: 11.5,
+                      border: recurrence === r ? "1.5px solid var(--tum)" : "1px solid var(--line)",
+                      background: recurrence === r ? "var(--tum-soft)" : "var(--surface)",
+                      color: recurrence === r ? "var(--tum)" : "var(--ink-3)",
+                      fontWeight: recurrence === r ? 500 : 400,
+                      cursor: "pointer", transition: "all 120ms ease",
+                    }}
+                  >
+                    {r === "once" ? "Once" : r === "daily" ? "Daily" : r === "weekly" ? "Weekly" : "Monthly"}
+                  </button>
+                ))}
+              </div>
             </SidebarField>
           </div>
 
