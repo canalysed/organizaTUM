@@ -11,7 +11,7 @@ import { TweaksPanel } from "./TweaksPanel";
 import { ChatCenter } from "@/features/chat/components/ChatCenter";
 import { ChatFloat } from "@/features/chat/components/ChatFloat";
 import { ChatSidebar } from "@/features/chat/components/ChatSidebar";
-import { CalendarGrid, type SelectionSlot } from "@/features/calendar/components/CalendarGrid";
+import { CalendarGrid, DAY_NAMES, formatT, type SelectionSlot } from "@/features/calendar/components/CalendarGrid";
 
 type AppState = "landing" | "chatting" | "split";
 type View = "app" | "profile";
@@ -34,6 +34,7 @@ export function AppClient() {
   const calendar = useCalendarStore((s) => s.calendar);
   const setCalendar = useCalendarStore((s) => s.setCalendar);
   const setCalendarLoading = useCalendarStore((s) => s.setLoading);
+  const updateBlock = useCalendarStore((s) => s.updateBlock);
 
   const { messages, append, isLoading, data } = useChat({ api: "/api/chat" });
 
@@ -98,6 +99,14 @@ export function AppClient() {
     setRefineBlock(block);
     setSelection([]);
   }, []);
+
+  const handleBlockMove = useCallback((blockId: string, newDay: number, newStart: number, newEnd: number) => {
+    updateBlock(blockId, {
+      dayOfWeek: DAY_NAMES[newDay],
+      startTime: formatT(newStart),
+      endTime: formatT(newEnd),
+    });
+  }, [updateBlock]);
 
   const agentStatus =
     agentPhase === "scheduling" ? "Drafting your week..."
@@ -173,6 +182,7 @@ export function AppClient() {
                   density={density}
                   blockStyle={blockStyle}
                   onBlockClick={handleBlockClick}
+                  onBlockMove={handleBlockMove}
                   selectedId={refineBlock?.id ?? null}
                   buildProgress={buildProgress}
                   selection={selection}

@@ -4,21 +4,20 @@ import { useState, useRef, useEffect } from "react";
 import type { WeeklyCalendar, TimeBlock } from "@organizaTUM/shared";
 import { Icon } from "@/components/Icon";
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-const DAY_NUMS = [20, 21, 22, 23, 24];
-const TODAY_IDX = 2;
+const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+export const DAY_NAMES = [
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+] as const;
 const HOUR_START = 8;
-const HOUR_END = 20;
-const EDGE_PX = 8; // px from top/bottom edge that acts as resize handle
+const HOUR_END = 23;
+const EDGE_PX = 8;
+const WEEKEND_START = 5; // indices 5 (Sat) and 6 (Sun)
 
 type Density = "compact" | "roomy";
 type BlockStyle = "muted" | "mono" | "accent";
 
 export interface SelectionSlot {
-  id: string;
-  day: number;
-  start: number; // float hours
-  end: number;
+  id: string; day: number; start: number; end: number;
 }
 
 export const SLOT_COLORS = [
@@ -34,12 +33,16 @@ interface CalendarBlock {
   kind: "lecture" | "exercise" | "study" | "meal" | "leisure" | "break";
   title: string; where?: string;
 }
+interface LayoutBlock extends CalendarBlock { col: number; numCols: number; }
+interface BlockDraft { id: string; day: number; start: number; end: number; }
+interface PopupState { calBlock: CalendarBlock; orig: TimeBlock; x: number; y: number; }
 
 interface CalendarGridProps {
   calendar: WeeklyCalendar | null;
   density: Density;
   blockStyle: BlockStyle;
   onBlockClick: (block: TimeBlock) => void;
+  onBlockMove?: (blockId: string, newDay: number, newStart: number, newEnd: number) => void;
   selectedId: string | null;
   buildProgress: number;
   selection: SelectionSlot[];
@@ -56,7 +59,7 @@ const KIND_META: Record<string, { label: string; color: string; bg: string }> = 
 };
 
 const DAY_MAP: Record<string, number> = {
-  monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4,
+  monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6,
 };
 const TYPE_TO_KIND: Record<string, CalendarBlock["kind"]> = {
   lecture: "lecture", uebung: "exercise", exercise: "exercise",
@@ -67,7 +70,7 @@ function parseTime(t: string): number {
   const [h, m] = t.split(":").map(Number);
   return h + m / 60;
 }
-function formatT(h: number): string {
+export function formatT(h: number): string {
   const hh = Math.floor(h);
   const mm = Math.round((h - hh) * 60);
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
@@ -83,58 +86,163 @@ function toCalendarBlocks(cal: WeeklyCalendar): CalendarBlock[] {
     }));
 }
 
-// ─── Drag state types ──────────────────────────────────────────────────────
+function getWeekMonday(offset: number): Date {
+  const today = new Date();
+  const dow = today.getDay();
+  const toMon = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + toMon + offset * 7);
+  return monday;
+}
+
+function getISOWeek(date: Date): number {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+}
+
+function formatDateRange(monday: Date): string {
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const sm = monday.toLocaleString("en", { month: "long" });
+  const em = sunday.toLocaleString("en", { month: "long" });
+  if (sm === em) return `${sm} ${monday.getDate()} \u2012 ${sunday.getDate()}`;
+  return `${sm} ${monday.getDate()} \u2012 ${em} ${sunday.getDate()}`;
+}
+
+// Groups overlapping blocks per-day and assigns column indices
+function computeLayout(blocks: CalendarBlock[]): LayoutBlock[] {
+  if (!blocks.length) return [];
+  const sorted = [...blocks].sort((a, b) => a.start !== b.start ? a.start - b.start : b.end - a.end);
+
+  const clusters: CalendarBlock[][] = [];
+  let current: CalendarBlock[] = [sorted[0]];
+  let maxEnd = sorted[0].end;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const b = sorted[i];
+    if (b.start >= maxEnd) {
+      clusters.push(current);
+      current = [b];
+      maxEnd = b.end;
+    } else {
+      current.push(b);
+      maxEnd = Math.max(maxEnd, b.end);
+    }
+  }
+  clusters.push(current);
+
+  const result: LayoutBlock[] = [];
+  for (const cluster of clusters) {
+    const colEnds: number[] = [];
+    const colAssign: number[] = [];
+    for (const b of cluster) {
+      let col = colEnds.findIndex(end => end <= b.start);
+      if (col === -1) col = colEnds.length;
+      colEnds[col] = b.end;
+      colAssign.push(col);
+    }
+    const numCols = colEnds.length;
+    cluster.forEach((b, i) => result.push({ ...b, col: colAssign[i], numCols }));
+  }
+  return result;
+}
+
+// ─── Drag state ─────────────────────────────────────────────────────────────
 
 type DragState =
   | { kind: "new"; day: number; colTop: number; startY: number; endY: number }
-  | { kind: "move" | "resize-top" | "resize-bottom"; slotId: string; day: number; origStart: number; origEnd: number; startClientY: number; hourPx: number };
+  | { kind: "move" | "resize-top" | "resize-bottom"; slotId: string; day: number; origStart: number; origEnd: number; startClientY: number; hourPx: number }
+  | { kind: "block-move"; blockId: string; origDay: number; origStart: number; origEnd: number; startClientY: number; hourPx: number };
 
-// ─── Component ────────────────────────────────────────────────────────────
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export function CalendarGrid({
   calendar, density, blockStyle,
-  onBlockClick, selectedId,
+  onBlockClick, onBlockMove, selectedId,
   buildProgress, selection, onSelectionChange,
 }: CalendarGridProps) {
   const hourPx = density === "compact" ? 44 : 62;
   const hours = HOUR_END - HOUR_START;
   const totalHeight = hours * hourPx;
-  const nowHour = 14 + 35 / 60;
+
+  const [weekOffset, setWeekOffset] = useState(0);
+  const monday = getWeekMonday(weekOffset);
+  const weekDates = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d.getDate();
+  });
+  const weekNum = getISOWeek(monday);
+  const dateRange = formatDateRange(monday);
+
+  // todayIdx: 0=Mon … 5=Sat, 6=Sun  (–1 when viewing another week)
+  const todayDow = new Date().getDay(); // 0=Sun … 6=Sat
+  const todayIdx = weekOffset === 0 ? (todayDow === 0 ? 6 : todayDow - 1) : -1;
+  const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
   const nowTop = (nowHour - HOUR_START) * hourPx;
 
   const blocks = calendar ? toCalendarBlocks(calendar) : [];
   const visibleCount = Math.ceil(blocks.length * buildProgress);
 
-  // Drag refs (never go stale in document listeners)
+  // Auto-scroll to current time on mount
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = Math.max(0, nowTop - hourPx * 2);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [popup, setPopup] = useState<PopupState | null>(null);
+
+  // ── Drag refs ──────────────────────────────────────────────────────────────
   const dragRef = useRef<DragState | null>(null);
   const selectionRef = useRef(selection);
   useEffect(() => { selectionRef.current = selection; }, [selection]);
   const onChangeRef = useRef(onSelectionChange);
   useEffect(() => { onChangeRef.current = onSelectionChange; }, [onSelectionChange]);
+  const onBlockMoveRef = useRef(onBlockMove);
+  useEffect(() => { onBlockMoveRef.current = onBlockMove; }, [onBlockMove]);
   const totalHRef = useRef(totalHeight);
   useEffect(() => { totalHRef.current = totalHeight; }, [totalHeight]);
   const hourPxRef = useRef(hourPx);
   useEffect(() => { hourPxRef.current = hourPx; }, [hourPx]);
 
-  // Visual state
   const [liveDrag, setLiveDrag] = useState<{ day: number; startY: number; endY: number } | null>(null);
   const [draftSlot, setDraftSlot] = useState<SelectionSlot | null>(null);
   const draftSlotRef = useRef<SelectionSlot | null>(null);
   useEffect(() => { draftSlotRef.current = draftSlot; }, [draftSlot]);
 
-  const [cursorOverride, setCursorOverride] = useState<string>("");
-  const dayColRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null, null]);
+  const [draftBlock, setDraftBlock] = useState<BlockDraft | null>(null);
+  const draftBlockRef = useRef<BlockDraft | null>(null);
+  useEffect(() => { draftBlockRef.current = draftBlock; }, [draftBlock]);
 
-  const snap = (h: number) => Math.round(h * 4) / 4; // 15-min
+  const [cursorOverride, setCursorOverride] = useState<string>("");
+  const dayColRefs = useRef<(HTMLDivElement | null)[]>(Array(7).fill(null));
+
+  const snap = (h: number) => Math.round(h * 4) / 4;
   const yToHour = (y: number) => HOUR_START + Math.max(0, Math.min(hours, y / hourPxRef.current));
 
-  // ── Document-level listeners (registered once) ────────────────────────
-
+  // ── Document-level listeners ───────────────────────────────────────────────
   useEffect(() => {
+    const getDayFromX = (clientX: number): number => {
+      let best = 0, bestDist = Infinity;
+      for (let i = 0; i < 7; i++) {
+        const el = dayColRefs.current[i];
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        if (clientX >= rect.left && clientX <= rect.right) return i;
+        const dist = Math.min(Math.abs(clientX - rect.left), Math.abs(clientX - rect.right));
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      }
+      return best;
+    };
+
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
-
       if (d.kind === "new") {
         const y = e.clientY - d.colTop;
         const clamped = Math.max(0, Math.min(totalHRef.current, y));
@@ -142,51 +250,49 @@ export function CalendarGrid({
         setLiveDrag({ day: d.day, startY: d.startY, endY: clamped });
         return;
       }
-
-      // move / resize
+      if (d.kind === "block-move") {
+        const deltaH = (e.clientY - d.startClientY) / d.hourPx;
+        const duration = d.origEnd - d.origStart;
+        const ns = snap(Math.max(HOUR_START, Math.min(HOUR_END - duration, d.origStart + deltaH)));
+        const draft: BlockDraft = { id: d.blockId, day: getDayFromX(e.clientX), start: ns, end: ns + duration };
+        draftBlockRef.current = draft;
+        setDraftBlock({ ...draft });
+        return;
+      }
       const deltaH = (e.clientY - d.startClientY) / d.hourPx;
-      const duration = d.origEnd - d.origStart;
+      const dur = d.origEnd - d.origStart;
       let ns = d.origStart, ne = d.origEnd;
-
       if (d.kind === "move") {
-        ns = snap(Math.max(HOUR_START, Math.min(HOUR_END - duration, d.origStart + deltaH)));
-        ne = ns + duration;
+        ns = snap(Math.max(HOUR_START, Math.min(HOUR_END - dur, d.origStart + deltaH)));
+        ne = ns + dur;
       } else if (d.kind === "resize-top") {
         ns = snap(Math.max(HOUR_START, Math.min(d.origEnd - 0.25, d.origStart + deltaH)));
       } else if (d.kind === "resize-bottom") {
         ne = snap(Math.max(d.origStart + 0.25, Math.min(HOUR_END, d.origEnd + deltaH)));
       }
-
-      const draft: SelectionSlot = { id: d.slotId, day: d.day, start: ns, end: ne };
-      draftSlotRef.current = draft;
-      setDraftSlot(draft);
+      draftSlotRef.current = { id: d.slotId, day: d.day, start: ns, end: ne };
+      setDraftSlot({ ...draftSlotRef.current });
     };
 
     const onUp = () => {
       const d = dragRef.current;
       if (!d) return;
-
       if (d.kind === "new") {
-        const top = Math.min(d.startY, d.endY);
-        const bot = Math.max(d.startY, d.endY);
-        if (bot - top >= 10) {
-          const sh = snap(yToHour(top));
-          const eh = snap(yToHour(bot));
-          if (eh - sh >= 0.25) {
-            const newSlot: SelectionSlot = { id: Math.random().toString(36).slice(2), day: d.day, start: sh, end: eh };
-            onChangeRef.current([...selectionRef.current, newSlot]);
-          }
+        const t = Math.min(d.startY, d.endY), bot = Math.max(d.startY, d.endY);
+        if (bot - t >= 10) {
+          const sh = snap(yToHour(t)), eh = snap(yToHour(bot));
+          if (eh - sh >= 0.25) onChangeRef.current([...selectionRef.current, { id: Math.random().toString(36).slice(2), day: d.day, start: sh, end: eh }]);
         }
         setLiveDrag(null);
+      } else if (d.kind === "block-move") {
+        const draft = draftBlockRef.current;
+        if (draft) onBlockMoveRef.current?.(draft.id, draft.day, draft.start, draft.end);
+        setDraftBlock(null); draftBlockRef.current = null;
       } else {
         const draft = draftSlotRef.current;
-        if (draft) {
-          onChangeRef.current(selectionRef.current.map((s) => (s.id === draft.id ? draft : s)));
-        }
-        setDraftSlot(null);
-        draftSlotRef.current = null;
+        if (draft) onChangeRef.current(selectionRef.current.map(s => s.id === draft.id ? draft : s));
+        setDraftSlot(null); draftSlotRef.current = null;
       }
-
       dragRef.current = null;
       setCursorOverride("");
     };
@@ -199,8 +305,6 @@ export function CalendarGrid({
     };
   }, []); // intentionally empty — all reads go through refs
 
-  // ── Interaction handlers ──────────────────────────────────────────────
-
   const startNewDrag = (dayIdx: number, e: React.MouseEvent<HTMLDivElement>) => {
     const colEl = dayColRefs.current[dayIdx];
     if (!colEl) return;
@@ -211,190 +315,199 @@ export function CalendarGrid({
     setCursorOverride("crosshair");
   };
 
-  const startSelectionDrag = (
-    e: React.MouseEvent,
-    slot: SelectionSlot,
-    kind: "move" | "resize-top" | "resize-bottom",
-  ) => {
-    e.stopPropagation();
-    e.preventDefault();
-    dragRef.current = {
-      kind, slotId: slot.id, day: slot.day,
-      origStart: slot.start, origEnd: slot.end,
-      startClientY: e.clientY, hourPx: hourPxRef.current,
-    };
-    setDraftSlot({ ...slot });
-    draftSlotRef.current = { ...slot };
+  const startSelectionDrag = (e: React.MouseEvent, slot: SelectionSlot, kind: "move" | "resize-top" | "resize-bottom") => {
+    e.stopPropagation(); e.preventDefault();
+    dragRef.current = { kind, slotId: slot.id, day: slot.day, origStart: slot.start, origEnd: slot.end, startClientY: e.clientY, hourPx: hourPxRef.current };
+    setDraftSlot({ ...slot }); draftSlotRef.current = { ...slot };
     setCursorOverride(kind === "move" ? "grabbing" : "ns-resize");
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  const startBlockDrag = (e: React.MouseEvent, block: CalendarBlock) => {
+    e.stopPropagation(); e.preventDefault();
+    dragRef.current = { kind: "block-move", blockId: block.id, origDay: block.day, origStart: block.start, origEnd: block.end, startClientY: e.clientY, hourPx: hourPxRef.current };
+    const init: BlockDraft = { id: block.id, day: block.day, start: block.start, end: block.end };
+    setDraftBlock(init); draftBlockRef.current = init;
+    setCursorOverride("grabbing");
+  };
+
+  // Weekends are narrower (0.72 fr) — mirrors Google Calendar's layout
+  const gridCols = "56px repeat(5, 1fr) repeat(2, 0.72fr)";
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-raised)", borderRadius: 14, border: "1px solid var(--line)", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
       {cursorOverride && <style>{`* { cursor: ${cursorOverride} !important; }`}</style>}
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px 14px", borderBottom: "1px solid var(--line-soft)" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-          <div className="serif" style={{ fontSize: 26, lineHeight: 1, color: "var(--ink)" }}>April 20 ‒ 24</div>
-          <div style={{ fontSize: 12, color: "var(--ink-3)", letterSpacing: "0.04em", textTransform: "uppercase" }}>Week 16 · Summer Term</div>
+      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px 12px", borderBottom: "1px solid var(--line-soft)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <div className="serif" style={{ fontSize: 22, lineHeight: 1, color: "var(--ink)" }}>{dateRange}</div>
+          <div style={{ fontSize: 11, color: "var(--ink-4)", letterSpacing: "0.05em", textTransform: "uppercase" }}>Week {weekNum} · Summer Term</div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)" }}>Today</button>
-          <NavBtn label="Previous week"><Icon name="chevron" size={14} style={{ transform: "rotate(180deg)" }}/></NavBtn>
-          <NavBtn label="Next week"><Icon name="chevron" size={14}/></NavBtn>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--line)", background: weekOffset === 0 ? "var(--ink)" : "var(--surface)", color: weekOffset === 0 ? "var(--bg)" : "var(--ink-2)", cursor: "pointer", transition: "all 120ms ease" }}
+            onClick={() => setWeekOffset(0)}
+          >Today</button>
+          <NavBtn label="Previous week" onClick={() => setWeekOffset(o => o - 1)}><Icon name="chevron" size={14} style={{ transform: "rotate(180deg)" }}/></NavBtn>
+          <NavBtn label="Next week" onClick={() => setWeekOffset(o => o + 1)}><Icon name="chevron" size={14}/></NavBtn>
         </div>
       </div>
 
-      {/* Legend */}
-      <div style={{ display: "flex", gap: 14, padding: "8px 22px", borderBottom: "1px solid var(--line-soft)", fontSize: 11.5, color: "var(--ink-3)" }}>
-        {(["lecture", "exercise", "study", "meal", "leisure"] as const).map((k) => (
-          <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: KIND_META[k].color }}/>
+      {/* ── Legend ──────────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", gap: 12, padding: "6px 20px", borderBottom: "1px solid var(--line-soft)", fontSize: 11, color: "var(--ink-3)", flexShrink: 0, flexWrap: "wrap" }}>
+        {(["lecture", "exercise", "study", "meal", "leisure"] as const).map(k => (
+          <div key={k} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 7, height: 7, borderRadius: 2, background: KIND_META[k].color }}/>
             <span>{KIND_META[k].label}</span>
           </div>
         ))}
       </div>
 
-      {/* Grid */}
-      <div className="scroll" style={{ flex: 1, overflow: "auto", position: "relative" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "56px repeat(5, 1fr)", minHeight: "100%" }}>
-          <div style={{ position: "sticky", top: 0, zIndex: 2, background: "var(--bg-raised)", borderBottom: "1px solid var(--line)", borderRight: "1px solid var(--line-soft)" }}/>
+      {/* ── Scrollable grid ─────────────────────────────────────────────── */}
+      <div ref={scrollContainerRef} className="scroll" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative" }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols }}>
 
-          {DAYS.map((d, i) => (
-            <div key={d} style={{ position: "sticky", top: 0, zIndex: 2, background: i === TODAY_IDX ? "var(--bg-sunken)" : "var(--bg-raised)", borderBottom: "1px solid var(--line)", padding: "12px 12px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
-              <div style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{d}</div>
-              <div className="serif" style={{ fontSize: 18, color: i === TODAY_IDX ? "var(--ink)" : "var(--ink-2)" }}>{DAY_NUMS[i]}</div>
-            </div>
-          ))}
+          {/* Sticky corner cell */}
+          <div style={{ position: "sticky", top: 0, zIndex: 20, background: "var(--bg-raised)", borderBottom: "1px solid var(--line)" }}/>
 
-          {/* Hour labels */}
+          {/* Sticky day headers */}
+          {ALL_DAYS.map((d, i) => {
+            const isWeekend = i >= WEEKEND_START;
+            const isToday = i === todayIdx;
+            return (
+              <div
+                key={d}
+                style={{
+                  position: "sticky", top: 0, zIndex: 20,
+                  background: isWeekend
+                    ? "color-mix(in oklab, var(--bg-sunken) 55%, var(--bg-raised))"
+                    : "var(--bg-raised)",
+                  borderBottom: "1px solid var(--line)",
+                  borderLeft: i === WEEKEND_START ? "1px solid var(--line-soft)" : "1px solid var(--line-soft)",
+                  padding: "9px 8px 7px",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                }}
+              >
+                <div style={{ fontSize: 10, color: isToday ? "var(--lecture)" : isWeekend ? "var(--ink-4)" : "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>{d}</div>
+                <div
+                  className="serif"
+                  style={{
+                    fontSize: 16, fontWeight: 500, lineHeight: 1,
+                    width: 28, height: 28, borderRadius: "50%",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: isToday ? "var(--lecture)" : "transparent",
+                    color: isToday ? "#fff" : isWeekend ? "var(--ink-3)" : "var(--ink-2)",
+                    transition: "background 200ms ease",
+                  }}
+                >
+                  {weekDates[i]}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Hour labels column */}
           <div style={{ borderRight: "1px solid var(--line-soft)", position: "relative", height: totalHeight }}>
             {Array.from({ length: hours + 1 }).map((_, i) => (
-              <div key={i} style={{ position: "absolute", top: i * hourPx, right: 8, fontSize: 10.5, color: "var(--ink-4)", fontFamily: "var(--font-mono, monospace)", transform: "translateY(-50%)" }}>
+              <div key={i} style={{ position: "absolute", top: i * hourPx, right: 7, fontSize: 9.5, color: "var(--ink-4)", fontFamily: "var(--font-mono, monospace)", transform: "translateY(-50%)", lineHeight: 1 }}>
                 {String(HOUR_START + i).padStart(2, "0")}
               </div>
             ))}
           </div>
 
           {/* Day columns */}
-          {DAYS.map((_, dayIdx) => {
-            const dayBlocks = blocks.filter((b) => b.day === dayIdx);
-            const daySel = selection.filter((s) => s.day === dayIdx);
-            const ld = liveDrag && liveDrag.day === dayIdx ? liveDrag : null;
+          {ALL_DAYS.map((_, dayIdx) => {
+            const isWeekend = dayIdx >= WEEKEND_START;
+            // Use effective day for dragged blocks
+            const dayBlocks = blocks.filter(b => (draftBlock?.id === b.id ? draftBlock.day : b.day) === dayIdx);
+            const layout = computeLayout(dayBlocks);
+            const daySel = selection.filter(s => s.day === dayIdx);
+            const ld = liveDrag?.day === dayIdx ? liveDrag : null;
 
             return (
               <div
                 key={dayIdx}
-                ref={(el) => { dayColRefs.current[dayIdx] = el; }}
-                style={{ position: "relative", borderRight: "1px solid var(--line-soft)", height: totalHeight, cursor: "crosshair" }}
-                onMouseDown={(e) => {
-                  // Only start a new drag if the click is not on a selection handle or block
+                ref={el => { dayColRefs.current[dayIdx] = el; }}
+                style={{
+                  position: "relative",
+                  borderLeft: "1px solid var(--line-soft)",
+                  height: totalHeight,
+                  cursor: "crosshair",
+                  background: isWeekend ? "color-mix(in oklab, var(--bg-sunken) 22%, transparent)" : "transparent",
+                }}
+                onMouseDown={e => {
                   if ((e.target as HTMLElement).closest("[data-sel-handle],[data-block],[data-del-btn]")) return;
                   startNewDrag(dayIdx, e);
                 }}
               >
-                {/* Grid lines */}
+                {/* Hour grid lines */}
                 {Array.from({ length: hours }).map((_, i) => (
                   <span key={i}>
-                    <div style={{ position: "absolute", left: 0, right: 0, top: i * hourPx, borderTop: "1px dashed var(--line-soft)" }}/>
-                    <div style={{ position: "absolute", left: 0, right: 0, top: i * hourPx + hourPx / 2, borderTop: "1px dotted var(--line-soft)", opacity: 0.5 }}/>
+                    <div style={{ position: "absolute", left: 0, right: 0, top: i * hourPx, borderTop: "1px solid color-mix(in oklab, var(--line-soft) 65%, transparent)", pointerEvents: "none" }}/>
+                    <div style={{ position: "absolute", left: 0, right: 0, top: i * hourPx + hourPx / 2, borderTop: "1px dotted color-mix(in oklab, var(--line-soft) 35%, transparent)", pointerEvents: "none" }}/>
                   </span>
                 ))}
-                <div style={{ position: "absolute", left: 0, right: 0, top: hours * hourPx, borderTop: "1px dashed var(--line-soft)" }}/>
 
                 {/* Selection overlays */}
-                {daySel.map((slot) => {
-                  const displayed = draftSlot?.id === slot.id ? draftSlot : slot;
-                  const colorIdx = selection.findIndex((s) => s.id === slot.id) % SLOT_COLORS.length;
-                  const c = SLOT_COLORS[colorIdx];
-                  const top = (displayed.start - HOUR_START) * hourPx;
-                  const h = (displayed.end - displayed.start) * hourPx;
+                {daySel.map(slot => {
+                  const disp = draftSlot?.id === slot.id ? draftSlot : slot;
+                  const c = SLOT_COLORS[selection.findIndex(s => s.id === slot.id) % SLOT_COLORS.length];
+                  const top = (disp.start - HOUR_START) * hourPx;
+                  const h = (disp.end - disp.start) * hourPx;
                   const hasBody = h > 2 * EDGE_PX;
-                  const isDraft = draftSlot?.id === slot.id;
-
                   return (
-                    <div
-                      key={slot.id}
-                      style={{ position: "absolute", left: 4, right: 4, top: top + 2, height: h - 4, background: c.bg, border: `1.5px solid ${c.border}`, borderRadius: 8, zIndex: 1, overflow: "hidden", opacity: isDraft ? 0.85 : 1 }}
-                    >
-                      {/* Top resize handle */}
-                      <div
-                        data-sel-handle=""
-                        style={{ position: "absolute", top: 0, left: 0, right: 0, height: hasBody ? EDGE_PX : "50%", cursor: "ns-resize", zIndex: 2 }}
-                        onMouseDown={(e) => startSelectionDrag(e, slot, "resize-top")}
-                      />
-
-                      {/* Body (move) — only when tall enough */}
+                    <div key={slot.id} style={{ position: "absolute", left: 3, right: 3, top: top + 2, height: h - 4, background: c.bg, border: `1.5px solid ${c.border}`, borderRadius: 8, zIndex: 5, overflow: "hidden", opacity: draftSlot?.id === slot.id ? 0.85 : 1 }}>
+                      <div data-sel-handle="" style={{ position: "absolute", top: 0, left: 0, right: 0, height: hasBody ? EDGE_PX : "50%", cursor: "ns-resize", zIndex: 2 }} onMouseDown={e => startSelectionDrag(e, slot, "resize-top")}/>
                       {hasBody && (
-                        <div
-                          data-sel-handle=""
-                          style={{ position: "absolute", top: EDGE_PX, left: 0, right: 0, bottom: EDGE_PX, cursor: "grab", display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "2px 5px" }}
-                          onMouseDown={(e) => startSelectionDrag(e, slot, "move")}
-                        >
-                          <span style={{ fontSize: 10, color: c.dot, fontFamily: "var(--font-mono, monospace)", lineHeight: 1.4, userSelect: "none", pointerEvents: "none" }}>
-                            {formatT(displayed.start)}<br/>{formatT(displayed.end)}
-                          </span>
-                          {/* Delete button */}
-                          <button
-                            data-del-btn=""
-                            style={{ width: 16, height: 16, borderRadius: 4, background: c.border, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => { e.stopPropagation(); onSelectionChange(selection.filter((s) => s.id !== slot.id)); }}
-                            aria-label="Remove"
-                          >
-                            <Icon name="close" size={9}/>
-                          </button>
+                        <div data-sel-handle="" style={{ position: "absolute", top: EDGE_PX, left: 0, right: 0, bottom: EDGE_PX, cursor: "grab", display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "2px 5px" }} onMouseDown={e => startSelectionDrag(e, slot, "move")}>
+                          <span style={{ fontSize: 9.5, color: c.dot, fontFamily: "var(--font-mono, monospace)", lineHeight: 1.4, userSelect: "none", pointerEvents: "none" }}>{formatT(disp.start)}<br/>{formatT(disp.end)}</span>
+                          <button data-del-btn="" style={{ width: 15, height: 15, borderRadius: 4, background: c.border, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }} onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSelectionChange(selection.filter(s => s.id !== slot.id)); }} aria-label="Remove"><Icon name="close" size={8}/></button>
                         </div>
                       )}
-
-                      {/* Delete button for short slots (no body) */}
                       {!hasBody && (
-                        <button
-                          data-del-btn=""
-                          style={{ position: "absolute", top: 2, right: 4, width: 14, height: 14, borderRadius: 3, background: c.border, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 3 }}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => { e.stopPropagation(); onSelectionChange(selection.filter((s) => s.id !== slot.id)); }}
-                          aria-label="Remove"
-                        >
-                          <Icon name="close" size={8}/>
-                        </button>
+                        <button data-del-btn="" style={{ position: "absolute", top: 2, right: 3, width: 13, height: 13, borderRadius: 3, background: c.border, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 3 }} onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSelectionChange(selection.filter(s => s.id !== slot.id)); }} aria-label="Remove"><Icon name="close" size={7}/></button>
                       )}
-
-                      {/* Bottom resize handle */}
-                      <div
-                        data-sel-handle=""
-                        style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: hasBody ? EDGE_PX : "50%", cursor: "ns-resize", zIndex: 2 }}
-                        onMouseDown={(e) => startSelectionDrag(e, slot, "resize-bottom")}
-                      />
+                      <div data-sel-handle="" style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: hasBody ? EDGE_PX : "50%", cursor: "ns-resize", zIndex: 2 }} onMouseDown={e => startSelectionDrag(e, slot, "resize-bottom")}/>
                     </div>
                   );
                 })}
 
-                {/* Live drag preview (new selection) */}
+                {/* Live new-selection preview */}
                 {ld && (
-                  <div style={{ position: "absolute", left: 4, right: 4, top: Math.min(ld.startY, ld.endY), height: Math.abs(ld.endY - ld.startY), background: "color-mix(in oklab, var(--ink) 10%, transparent)", border: "1.5px dashed var(--ink)", borderRadius: 8, pointerEvents: "none", zIndex: 2 }}/>
+                  <div style={{ position: "absolute", left: 3, right: 3, top: Math.min(ld.startY, ld.endY), height: Math.abs(ld.endY - ld.startY), background: "color-mix(in oklab, var(--ink) 8%, transparent)", border: "1.5px dashed var(--ink-3)", borderRadius: 8, pointerEvents: "none", zIndex: 5 }}/>
                 )}
 
                 {/* Calendar blocks */}
-                {dayBlocks.map((b) => {
-                  const globalIdx = blocks.indexOf(b);
-                  if (globalIdx >= visibleCount) return null;
-                  const top = (b.start - HOUR_START) * hourPx;
-                  const height = (b.end - b.start) * hourPx;
-                  const orig = calendar?.blocks.find((tb) => tb.id === b.id) ?? null;
+                {layout.map(b => {
+                  const globalIdx = blocks.findIndex(bl => bl.id === b.id);
+                  if (globalIdx < 0 || globalIdx >= visibleCount) return null;
+                  const draft = draftBlock?.id === b.id ? draftBlock : null;
+                  const dispStart = draft?.start ?? b.start;
+                  const dispEnd = draft?.end ?? b.end;
+                  const top = (dispStart - HOUR_START) * hourPx;
+                  const height = (dispEnd - dispStart) * hourPx;
+                  const col = draft ? 0 : b.col;
+                  const numCols = draft ? 1 : b.numCols;
+                  const orig = calendar?.blocks.find(tb => tb.id === b.id) ?? null;
                   return (
                     <div key={b.id} data-block="">
-                      <Block b={b} blockStyle={blockStyle} top={top} height={height} selected={selectedId === b.id} delayIdx={globalIdx} onClick={() => { if (orig) onBlockClick(orig); }}/>
+                      <Block
+                        b={b} blockStyle={blockStyle}
+                        top={top} height={height} col={col} numCols={numCols}
+                        selected={selectedId === b.id} delayIdx={globalIdx}
+                        isDragging={!!draft}
+                        onClick={e => { if (!orig || draft) return; setPopup({ calBlock: b, orig, x: e.clientX, y: e.clientY }); }}
+                        onStartDrag={e => startBlockDrag(e, b)}
+                      />
                     </div>
                   );
                 })}
 
-                {/* Now line */}
-                {dayIdx === TODAY_IDX && nowTop >= 0 && nowTop <= totalHeight && (
-                  <div style={{ position: "absolute", left: 0, right: 0, top: nowTop, borderTop: "1.5px solid oklch(62% 0.12 30)", zIndex: 3 }}>
-                    <div style={{ position: "absolute", left: -4, top: -4, width: 8, height: 8, borderRadius: "50%", background: "oklch(62% 0.12 30)" }}/>
+                {/* Current-time indicator */}
+                {dayIdx === todayIdx && nowTop >= 0 && nowTop <= totalHeight && (
+                  <div style={{ position: "absolute", left: 0, right: 0, top: nowTop, pointerEvents: "none", zIndex: 6 }}>
+                    <div style={{ position: "absolute", left: -1, top: -5, width: 10, height: 10, borderRadius: "50%", background: "oklch(52% 0.20 30)" }}/>
+                    <div style={{ position: "absolute", left: 8, right: 0, top: -1, height: 2, background: "oklch(52% 0.20 30)", borderRadius: 1 }}/>
                   </div>
                 )}
               </div>
@@ -402,51 +515,179 @@ export function CalendarGrid({
           })}
         </div>
       </div>
+
+      {/* ── Event popup ─────────────────────────────────────────────────── */}
+      {popup && (
+        <EventPopup
+          popup={popup}
+          onClose={() => setPopup(null)}
+          onRefine={block => { onBlockClick(block); setPopup(null); }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Block ────────────────────────────────────────────────────────────────
+// ─── Block chip ───────────────────────────────────────────────────────────────
 
-function Block({ b, blockStyle, top, height, selected, delayIdx, onClick }: {
-  b: CalendarBlock; blockStyle: BlockStyle; top: number; height: number;
-  selected: boolean; delayIdx: number; onClick: () => void;
+function Block({
+  b, blockStyle, top, height, col, numCols,
+  selected, delayIdx, isDragging, onClick, onStartDrag,
+}: {
+  b: CalendarBlock; blockStyle: BlockStyle;
+  top: number; height: number; col: number; numCols: number;
+  selected: boolean; delayIdx: number; isDragging?: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onStartDrag: (e: React.MouseEvent) => void;
 }) {
   const [hov, setHov] = useState(false);
   const meta = KIND_META[b.kind];
   const compact = height < 44;
   const veryCompact = height < 28;
+  const GAP = 2;
 
-  let bg = "var(--surface)", borderCol = "var(--line)", kindCol = meta.color;
+  let bg = "var(--surface)", borderCol = "var(--line)";
   let accentBar: string | null = null;
-  if (blockStyle === "muted") { bg = meta.bg; borderCol = `color-mix(in oklab, ${meta.color} 18%, var(--line))`; }
-  else if (blockStyle === "mono") { kindCol = "var(--ink-3)"; }
+  if (blockStyle === "muted")  { bg = meta.bg; borderCol = `color-mix(in oklab, ${meta.color} 30%, var(--line))`; }
   else if (blockStyle === "accent") { accentBar = meta.color; }
 
   return (
     <div
-      style={{ position: "absolute", top: top + 2, height: height - 4, left: 6, right: 6, background: bg, border: `1px solid ${borderCol}`, ...(accentBar ? { borderLeft: `3px solid ${accentBar}` } : {}), borderRadius: 8, padding: compact ? "4px 8px" : "7px 10px", boxShadow: selected ? "0 0 0 2px var(--ink)" : "var(--shadow-sm)", cursor: "pointer", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, animation: `blockIn 420ms cubic-bezier(0.2, 0.8, 0.2, 1) ${delayIdx * 22}ms both`, transform: hov ? "translateY(-1px)" : "translateY(0)", transition: "transform 120ms ease, box-shadow 120ms ease", zIndex: 4 }}
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        position: "absolute",
+        top: top + 2,
+        height: Math.max(height - 4, 18),
+        left: `calc(${(col / numCols) * 100}% + ${GAP}px)`,
+        width: `calc(${(1 / numCols) * 100}% - ${GAP * 2}px)`,
+        background: bg,
+        border: `1px solid ${borderCol}`,
+        ...(accentBar ? { borderLeft: `3px solid ${accentBar}` } : {}),
+        borderRadius: 7,
+        padding: veryCompact ? "2px 6px" : compact ? "4px 7px" : "5px 8px",
+        boxShadow: isDragging
+          ? "0 10px 32px color-mix(in oklab, var(--ink) 22%, transparent)"
+          : selected
+            ? `0 0 0 2px ${meta.color}`
+            : "0 1px 2px color-mix(in oklab, var(--ink) 5%, transparent)",
+        cursor: isDragging ? "grabbing" : "grab",
+        opacity: isDragging ? 0.88 : 1,
+        overflow: "hidden",
+        display: "flex", flexDirection: "column", gap: 1,
+        animation: `blockIn 380ms cubic-bezier(0.2, 0.8, 0.2, 1) ${delayIdx * 20}ms both`,
+        transform: isDragging ? "scale(1.025) translateZ(0)" : hov ? "translateY(-1px)" : "none",
+        transition: isDragging ? "none" : "transform 100ms ease, box-shadow 100ms ease",
+        zIndex: isDragging ? 12 : 4,
+        userSelect: "none",
+      }}
+      onClick={e => { e.stopPropagation(); onClick(e); }}
+      onMouseDown={e => { e.stopPropagation(); onStartDrag(e); }}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
     >
       {!veryCompact && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: kindCol, fontFamily: "var(--font-mono, monospace)", letterSpacing: "0.04em" }}>
-          {blockStyle !== "mono" && <span style={{ width: 6, height: 6, borderRadius: 2, background: meta.color, flexShrink: 0 }}/>}
-          <span style={{ textTransform: "uppercase" }}>{meta.label}</span>
-          <span style={{ color: "var(--ink-4)", marginLeft: "auto" }}>{formatT(b.start)}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 1 }}>
+          <span style={{ width: 5, height: 5, borderRadius: 1.5, background: meta.color, flexShrink: 0 }}/>
+          <span style={{ fontSize: 9, color: meta.color, fontFamily: "var(--font-mono, monospace)", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600, lineHeight: 1 }}>{meta.label}</span>
         </div>
       )}
-      <div style={{ fontSize: compact ? 12 : 13, fontWeight: 500, color: "var(--ink)", lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.title}</div>
-      {!compact && b.where && <div style={{ fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.where}</div>}
+      <div style={{ fontSize: compact ? 11 : 12, fontWeight: 600, color: "var(--ink)", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: compact ? "nowrap" : "normal", display: "-webkit-box", WebkitLineClamp: compact ? 1 : 2, WebkitBoxOrient: "vertical" }}>{b.title}</div>
+      {!compact && (
+        <div style={{ fontSize: 10, color: "var(--ink-3)", lineHeight: 1.3, marginTop: 1 }}>
+          {formatT(b.start)} – {formatT(b.end)}
+          {b.where && <span style={{ marginLeft: 5, color: "var(--ink-4)" }}>· {b.where}</span>}
+        </div>
+      )}
     </div>
   );
 }
 
-function NavBtn({ children, label }: { children: React.ReactNode; label: string }) {
+// ─── Event detail popup ───────────────────────────────────────────────────────
+
+function EventPopup({ popup, onClose, onRefine }: {
+  popup: PopupState;
+  onClose: () => void;
+  onRefine: (block: TimeBlock) => void;
+}) {
+  const meta = KIND_META[popup.calBlock.kind];
+  const POPUP_W = 256;
+
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+  const x = popup.x + 16 + POPUP_W > vw ? popup.x - POPUP_W - 8 : popup.x + 16;
+  const y = Math.min(popup.y - 16, vh - 200);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as Element).closest("[data-popup]")) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
   return (
-    <button style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)" }} aria-label={label}>
+    <div
+      data-popup=""
+      style={{
+        position: "fixed", top: y, left: x, width: POPUP_W,
+        background: "var(--bg-raised)",
+        border: "1px solid var(--line)",
+        borderRadius: 12,
+        boxShadow: "var(--shadow-lg)",
+        zIndex: 1000, overflow: "hidden",
+        animation: "fadeIn 120ms ease both",
+      }}
+    >
+      {/* Colored header */}
+      <div style={{ background: meta.color, padding: "11px 12px 9px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-mono, monospace)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>{meta.label}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: "#fff", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{popup.calBlock.title}</div>
+        </div>
+        <button onClick={onClose} style={{ color: "rgba(255,255,255,0.75)", flexShrink: 0, lineHeight: 1, padding: 2, marginTop: -1 }} aria-label="Close"><Icon name="close" size={14}/></button>
+      </div>
+
+      {/* Details */}
+      <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink-2)" }}>
+          <Icon name="calendar" size={13} style={{ color: "var(--ink-3)", flexShrink: 0 }}/>
+          <span>{formatT(popup.calBlock.start)} – {formatT(popup.calBlock.end)}</span>
+        </div>
+        {popup.calBlock.where && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink-2)" }}>
+            <span style={{ width: 13, height: 13, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Icon name="globe" size={13} style={{ color: "var(--ink-3)" }}/>
+            </span>
+            <span>{popup.calBlock.where}</span>
+          </div>
+        )}
+        <button
+          onClick={() => onRefine(popup.orig)}
+          style={{
+            marginTop: 4, padding: "7px 10px", borderRadius: 7,
+            background: "var(--surface)", border: "1px solid var(--line)",
+            fontSize: 12, color: "var(--ink-2)", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+            transition: "background 100ms ease",
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-sunken)")}
+          onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
+        >
+          <Icon name="refresh" size={12}/>
+          <span>Request change via chat</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NavBtn({ children, label, onClick }: { children: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button
+      style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer" }}
+      aria-label={label}
+      onClick={onClick}
+    >
       {children}
     </button>
   );
