@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Icon } from "./Icon";
 import { useUserStore } from "@/stores/user-store";
-import type { UserNote, NoteCategory, UserIdentity, UserProfile } from "@organizaTUM/shared";
+import type { UserNote, NoteCategory, UserIdentity, UserProfile, Course } from "@organizaTUM/shared";
 
 interface ProfilePageProps {
   onClose: () => void;
@@ -285,10 +285,9 @@ export function ProfilePage({ onClose }: ProfilePageProps) {
               </p>
               <div><button style={btnSecondary}>Enable 2FA</button></div>
             </ProfileSection>
+            <TUMOnlineSyncSection sessionId={sessionId} />
             <ProfileSection label="Connected systems">
               {[
-                { name: "TUMonline",  connected: true  },
-                { name: "Moodle",     connected: true  },
                 { name: "ZHS Sports", connected: false },
                 { name: "Mensa API",  connected: true  },
               ].map((s) => (
@@ -463,6 +462,146 @@ export function ProfilePage({ onClose }: ProfilePageProps) {
         )}
       </div>
     </div>
+  );
+}
+
+interface ScrapeResult {
+  courseCount: number;
+  scrapedAt: string;
+  courses: Course[];
+}
+
+function TUMOnlineSyncSection({ sessionId: _sessionId }: { sessionId: string | null }) {
+  const setTumCourses = useUserStore((s) => s.setTumCourses);
+  const tumCourses = useUserStore((s) => s.tumCourses);
+  const [open, setOpen] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
+    tumCourses ? "done" : "idle",
+  );
+  const [result, setResult] = useState<ScrapeResult | null>(
+    tumCourses ? { courseCount: tumCourses.length, scrapedAt: "", courses: tumCourses } : null,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  const handleSync = async () => {
+    if (!username.trim() || !password.trim()) return;
+    setStatus("loading");
+    setError(null);
+
+    try {
+      const res = await fetch("/api/tumonline/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tumUsername: username.trim(), tumPassword: password }),
+      });
+
+      if (passwordRef.current) passwordRef.current.value = "";
+      setPassword("");
+
+      if (!res.ok) {
+        const json = (await res.json()) as { error?: string };
+        throw new Error(json.error ?? "Unknown error");
+      }
+
+      const json = (await res.json()) as ScrapeResult;
+      setTumCourses(json.courses);
+      setResult(json);
+      setStatus("done");
+      setOpen(false);
+      setUsername("");
+    } catch (e) {
+      setStatus("error");
+      setError(e instanceof Error ? e.message : "Scraping failed");
+    }
+  };
+
+  const isLinked = status === "done" || (status === "idle" && result !== null);
+
+  return (
+    <ProfileSection label="TUMOnline">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}>
+        <div>
+          <div style={{ fontSize: 14, color: "var(--ink)" }}>Course schedule</div>
+          <div style={{
+            fontSize: 11.5,
+            color: isLinked ? "oklch(55% 0.08 150)" : "var(--ink-3)",
+            fontFamily: "var(--font-mono, monospace)",
+            marginTop: 2,
+          }}>
+            {status === "done" && result
+              ? `● synced ${result.courseCount} courses`
+              : status === "loading"
+              ? "○ syncing..."
+              : "○ not linked"}
+          </div>
+        </div>
+        <button style={btnSecondary} onClick={() => setOpen((v) => !v)}>
+          {open ? "Cancel" : status === "done" ? "Re-sync" : "Connect"}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{
+          display: "flex", flexDirection: "column", gap: 10,
+          padding: 14,
+          background: "var(--bg-raised)",
+          border: "1px solid var(--line)",
+          borderRadius: 8,
+        }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>TUM username</div>
+            <input
+              style={inputStyle}
+              type="text"
+              autoComplete="username"
+              placeholder="e.g. ga12abc"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>TUM password</div>
+            <input
+              ref={passwordRef}
+              style={inputStyle}
+              type="password"
+              autoComplete="current-password"
+              placeholder="Your TUM password"
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <p style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5, margin: 0 }}>
+            Used once to fetch your schedule. Never stored.
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              style={{ ...btnPrimary, opacity: status === "loading" ? 0.6 : 1 }}
+              onClick={handleSync}
+              disabled={status === "loading" || !username.trim() || !password.trim()}
+            >
+              {status === "loading" ? "Syncing… (up to 60s)" : "Sync now"}
+            </button>
+          </div>
+          {status === "error" && error && (
+            <p style={{ fontSize: 12, color: "oklch(50% 0.15 25)", margin: 0 }}>{error}</p>
+          )}
+        </div>
+      )}
+
+      {status === "done" && result && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {result.courses.map((c) => (
+            <div key={c.id} style={{ fontSize: 12, color: "var(--ink-2)", display: "flex", justifyContent: "space-between" }}>
+              <span>{c.name}</span>
+              <span style={{ color: "var(--ink-3)", fontFamily: "var(--font-mono, monospace)" }}>{c.credits} ECTS</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </ProfileSection>
   );
 }
 

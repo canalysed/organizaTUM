@@ -11,11 +11,19 @@ import { useCalendarStore } from "@/stores/calendar-store";
 
 export function ChatPanel() {
   const setAgentPhase = useUserStore((s) => s.setAgentPhase);
+  const sessionId = useUserStore((s) => s.sessionId);
+  const tumCourses = useUserStore((s) => s.tumCourses);
   const setCalendar = useCalendarStore((s) => s.setCalendar);
   const setCalendarLoading = useCalendarStore((s) => s.setLoading);
 
   const { messages, data, input, handleInputChange, handleSubmit, isLoading } =
-    useChat({ api: "/api/chat" });
+    useChat({
+      api: "/api/chat",
+      body: {
+        sessionId: sessionId ?? undefined,
+        tumCourses: tumCourses ?? undefined,
+      },
+    });
 
   const [steps, setSteps] = useState<ProcessStep[]>([]);
 

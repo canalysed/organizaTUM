@@ -23,8 +23,9 @@ export async function analysisNode(
   if (!state.userProfile) return {};
 
   emitThinking("Looking up course information...");
-  const courses = await lookupCourses(
+  const courses = lookupCourses(
     state.userProfile.courses.map((c) => c.courseId),
+    state.tumCourses,
   );
 
   const courseAnalyses: CourseAnalysis[] = courses.map((course) => {

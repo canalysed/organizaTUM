@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${instrumentSerif.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={`${instrumentSerif.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <head>
         {/* Anti-FOUC: apply dark mode before hydration */}
         <script dangerouslySetInnerHTML={{ __html: `try{const s=JSON.parse(localStorage.getItem('organizatum-user')||'{}');if(s.state?.darkMode)document.documentElement.setAttribute('data-theme','dark');}catch(e){}` }}/>

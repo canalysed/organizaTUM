@@ -1,0 +1,2 @@
+-- TUMOnline scraped data is kept in-memory (Zustand) and sent with each
+-- chat request. No database persistence needed.
