@@ -38,14 +38,20 @@ export function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [tabVisible, setTabVisible] = useState(true);
   const csvRef = useRef<HTMLInputElement>(null);
 
   const switchTab = (t: AuthTab) => {
-    setTab(t);
-    setSignupStep(1);
-    setSlideDir("none");
-    setError(null);
-    setSuccess(null);
+    if (t === tab) return;
+    setTabVisible(false);
+    setTimeout(() => {
+      setTab(t);
+      setSignupStep(1);
+      setSlideDir("none");
+      setError(null);
+      setSuccess(null);
+      setTabVisible(true);
+    }, 160);
   };
 
   const goToStep2 = (e: React.FormEvent) => {
@@ -101,32 +107,31 @@ export function AuthPage() {
     }
 
     const supabase = createBrowserSupabaseClient();
-    const { error: err } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-          semester: semester ? parseInt(semester, 10) : null,
-          study_style: studyStyle || null,
-          program: program || null,
-        },
-      },
-    });
+    const { error: err } = await supabase.auth.signUp({ email, password });
 
     if (err) {
       setError(err.message);
     } else {
       setSuccess("Account created. Signing you in…");
-      // Store CSV for the main app to load after login
       if (csvFile) {
         try {
           const text = await csvFile.text();
           localStorage.setItem("pending_csv", text);
         } catch { /* ignore */ }
       }
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-      if (!signInErr) {
+      const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+      if (!signInErr && signInData.user) {
+        await fetch("/api/user/identity", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: signInData.user.id,
+            fullName: fullName || undefined,
+            tumEmail: email || undefined,
+            faculty: program || undefined,
+            currentSemester: semester ? parseInt(semester, 10) : undefined,
+          }),
+        });
         router.push("/");
         router.refresh();
       }
@@ -185,7 +190,12 @@ export function AuthPage() {
             ))}
           </div>
 
-          <div style={{ position: "relative", overflow: "hidden" }}>
+          <div style={{
+            position: "relative", overflow: "hidden",
+            opacity: tabVisible ? 1 : 0,
+            transform: tabVisible ? "translateY(0)" : "translateY(6px)",
+            transition: "opacity 160ms ease, transform 160ms ease",
+          }}>
             {/* ── Sign in ── */}
             {tab === "signin" && (
               <form onSubmit={handleSignIn} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
