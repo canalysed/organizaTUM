@@ -76,6 +76,30 @@ export function AppClient() {
     });
   }, [router, setSessionId]);
 
+  // Consume pending CSV from signup — runs once on mount, independent of API calls
+  useEffect(() => {
+    const pendingCsv = localStorage.getItem("pending_csv");
+    if (!pendingCsv) return;
+    localStorage.removeItem("pending_csv");
+    try {
+      const blocks = parseTumCsv(pendingCsv);
+      if (!blocks.length) return;
+      const now = new Date();
+      const monday = new Date(now);
+      const dow = monday.getDay();
+      monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
+      monday.setHours(0, 0, 0, 0);
+      setCalendar({
+        id: crypto.randomUUID(),
+        weekStart: monday.toISOString().split("T")[0]!,
+        blocks,
+        metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
+      });
+      setAppState("split");
+    } catch { /* ignore malformed CSV */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally runs once on mount
+
   // Hydrate profile, notes, identity, calendar when sessionId is available
   useEffect(() => {
     if (!sessionId) return;
@@ -118,31 +142,7 @@ export function AppClient() {
     fetch(`/api/calendar?sessionId=${sessionId}`)
       .then((r) => r.json())
       .then((json: { calendar: unknown }) => {
-        if (!json.calendar) {
-          // Check if there's a pending CSV from signup
-          const pendingCsv = localStorage.getItem("pending_csv");
-          if (pendingCsv) {
-            localStorage.removeItem("pending_csv");
-            try {
-              const blocks = parseTumCsv(pendingCsv);
-              if (blocks.length) {
-                const now = new Date();
-                const monday = new Date(now);
-                const dow = monday.getDay();
-                monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
-                monday.setHours(0, 0, 0, 0);
-                setCalendar({
-                  id: crypto.randomUUID(),
-                  weekStart: monday.toISOString().split("T")[0]!,
-                  blocks,
-                  metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
-                });
-                setAppState("split");
-              }
-            } catch { /* ignore malformed CSV */ }
-          }
-          return;
-        }
+        if (!json.calendar) return;
         const parsed = WeeklyCalendarSchema.safeParse(json.calendar);
         if (parsed.success) {
           setCalendar(parsed.data);
