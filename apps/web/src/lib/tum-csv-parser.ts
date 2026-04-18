@@ -19,6 +19,7 @@ const TYPE_MAP: Record<string, BlockType> = {
 
 interface CsvRow {
   WOCHENTAG: string;
+  DATUM: string;
   VON: string;
   BIS: string;
   LV_NUMMER: string;
@@ -27,53 +28,63 @@ interface CsvRow {
   ORT: string;
 }
 
+function datumToIso(datum: string): string {
+  // DD.MM.YYYY → YYYY-MM-DD
+  const [d, m, y] = datum.split(".");
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
 export function parseTumCsv(csvText: string): TimeBlock[] {
-  const lines = csvText.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
+  try {
+    const lines = csvText.trim().split(/\r?\n/);
+    if (lines.length < 2) return [];
 
-  const headers = parseRow(lines[0]);
-  const seen = new Set<string>();
-  const blocks: TimeBlock[] = [];
+    const headers = parseRow(lines[0]);
+    const seen = new Set<string>();
+    const blocks: TimeBlock[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
 
-    const values = parseRow(line);
-    const row = Object.fromEntries(
-      headers.map((h, idx) => [h, values[idx] ?? ""])
-    ) as unknown as CsvRow;
+      const values = parseRow(line);
+      const row = Object.fromEntries(
+        headers.map((h, idx) => [h, values[idx] ?? ""])
+      ) as unknown as CsvRow;
 
-    // Deduplicate: same course + day + time can appear for multiple rooms
-    const dedupeKey = `${row.LV_NUMMER}-${row.WOCHENTAG}-${row.VON}-${row.BIS}`;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
+      // Deduplicate by course + exact date + time (same event in multiple rooms)
+      const dedupeKey = `${row.LV_NUMMER}-${row.DATUM}-${row.VON}-${row.BIS}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
 
-    const dayOfWeek = DAY_MAP[row.WOCHENTAG];
-    if (!dayOfWeek) continue;
+      const dayOfWeek = DAY_MAP[row.WOCHENTAG];
+      if (!dayOfWeek) continue;
 
-    const type: BlockType = TYPE_MAP[row.LV_ART] ?? "commitment";
+      const type: BlockType = TYPE_MAP[row.LV_ART] ?? "commitment";
 
-    blocks.push({
-      id: crypto.randomUUID(),
-      type,
-      title: row.TITEL.trim(),
-      dayOfWeek,
-      startTime: row.VON,
-      endTime: row.BIS,
-      courseId: row.LV_NUMMER,
-      location: cleanLocation(row.ORT),
-      isFixed: true,
-    });
+      blocks.push({
+        id: crypto.randomUUID(),
+        type,
+        title: row.TITEL.trim(),
+        dayOfWeek,
+        startTime: row.VON,
+        endTime: row.BIS,
+        date: datumToIso(row.DATUM),
+        courseId: row.LV_NUMMER,
+        location: cleanLocation(row.ORT),
+        isFixed: true,
+      });
+    }
+
+    return blocks;
+  } catch {
+    return [];
   }
-
-  return blocks;
 }
 
 function cleanLocation(ort: string): string {
   if (!ort) return "";
   if (ort.startsWith("Online")) return "Online";
-  // Remove trailing room code like "(5607.02.014)"
   return ort.replace(/\s*\(\d+[\d.]+\)\s*$/, "").trim();
 }
 

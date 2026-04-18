@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import type { WeeklyCalendar, TimeBlock } from "@organizaTUM/shared";
 import { Icon } from "@/components/Icon";
 
@@ -12,6 +12,8 @@ const HOUR_START = 8;
 const HOUR_END = 23;
 const EDGE_PX = 8;
 const WEEKEND_START = 5;
+const LUNCH_START = 10 + 45 / 60;
+const LUNCH_END = 14 + 15 / 60;
 
 const SKELETON_SCHEDULE: Array<{ day: number; start: number; end: number; dim?: boolean }> = [
   { day: 0, start: 9,    end: 10.5 },
@@ -51,11 +53,17 @@ export const SLOT_COLORS = [
 interface CalendarBlock {
   id: string; day: number; start: number; end: number;
   kind: "lecture" | "exercise" | "study" | "meal" | "leisure" | "break";
-  title: string; where?: string;
+  title: string; where?: string; date?: string;
+  dishes?: MealItem[];
 }
 interface LayoutBlock extends CalendarBlock { col: number; numCols: number; }
 interface BlockDraft { id: string; day: number; start: number; end: number; }
-interface PopupState { calBlock: CalendarBlock; orig: TimeBlock; x: number; y: number; }
+interface PopupState { calBlock: CalendarBlock; orig?: TimeBlock; x: number; y: number; }
+
+interface MealItem {
+  name: string;
+  price?: number;
+}
 
 interface CalendarGridProps {
   calendar: WeeklyCalendar | null;
@@ -69,6 +77,7 @@ interface CalendarGridProps {
   selection: SelectionSlot[];
   onSelectionChange: (s: SelectionSlot[]) => void;
   onImportCsv?: () => void;
+  selectedCanteenId?: string | null;
 }
 
 const KIND_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -105,6 +114,7 @@ function toCalendarBlocks(cal: WeeklyCalendar): CalendarBlock[] {
       start: parseTime(b.startTime), end: parseTime(b.endTime),
       kind: (TYPE_TO_KIND[b.type] ?? "break") as CalendarBlock["kind"],
       title: b.title, where: b.location,
+      date: b.date,
     }));
 }
 
@@ -180,6 +190,7 @@ export function CalendarGrid({
   calendar, isLoading = false, density, blockStyle,
   onBlockClick, onBlockMove, selectedId,
   buildProgress, selection, onSelectionChange, onImportCsv,
+  selectedCanteenId,
 }: CalendarGridProps) {
   const hours = HOUR_END - HOUR_START;
 
@@ -226,6 +237,54 @@ export function CalendarGrid({
     return !selection.some(s => s.day === b.day && s.start < b.end && s.end > b.start);
   };
 
+  const [weekMeals, setWeekMeals] = useState<Record<number, MealItem[]>>({});
+  useEffect(() => {
+    if (!selectedCanteenId) { setWeekMeals({}); return; }
+    const year = monday.getFullYear();
+    const week = getISOWeek(monday);
+    let cancelled = false;
+    fetch(`/api/mensa?canteenId=${encodeURIComponent(selectedCanteenId)}&year=${year}&week=${week}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { days?: Array<{ date: string; dishes?: Array<{ name: string; prices?: { students?: { base_price: number; price_per_unit: number; unit: string } | number } }> }> } | null) => {
+        if (cancelled || !data?.days) return;
+        const meals: Record<number, MealItem[]> = {};
+        for (const day of data.days) {
+          const dow = new Date(day.date + "T00:00:00").getDay();
+          const idx = dow === 0 ? 6 : dow - 1;
+          if (idx < 5 && day.dishes?.length) {
+            meals[idx] = day.dishes.map((d) => {
+              const s = d.prices?.students;
+              const price = typeof s === "number" ? s : (s as { base_price?: number } | undefined)?.base_price;
+              return { name: d.name, price: price ?? undefined };
+            });
+          }
+        }
+        setWeekMeals(meals);
+      })
+      .catch(() => { if (!cancelled) setWeekMeals({}); });
+    return () => { cancelled = true; };
+  }, [selectedCanteenId, weekOffset]);
+
+  const mealBlocks = useMemo<CalendarBlock[]>(() =>
+    Object.entries(weekMeals).flatMap(([dayStr, meals]) => {
+      if (!meals.length) return [];
+      const dayIdx = parseInt(dayStr);
+      return [{
+        id: `meal-day${dayIdx}`,
+        day: dayIdx,
+        start: LUNCH_START,
+        end: LUNCH_END,
+        kind: "meal" as const,
+        title: meals[0].name,
+        where: `${meals.length} dishes`,
+        dishes: meals,
+      }];
+    }),
+  [weekMeals]);
+
+  const mealBlocksRef = useRef(mealBlocks);
+  useEffect(() => { mealBlocksRef.current = mealBlocks; }, [mealBlocks]);
+
   const [popup, setPopup] = useState<PopupState | null>(null);
 
   const dragRef = useRef<DragState | null>(null);
@@ -242,6 +301,9 @@ export function CalendarGrid({
 
   const blocksRef = useRef(blocks);
   useEffect(() => { blocksRef.current = blocks; }, [blocks]);
+  // allBlocksRef includes meal blocks so click-popup works for mensa events
+  const allBlocksRef = useRef<CalendarBlock[]>([]);
+  useEffect(() => { allBlocksRef.current = [...blocksRef.current, ...mealBlocksRef.current]; }, [blocks, mealBlocks]);
   const calendarRef = useRef(calendar);
   useEffect(() => { calendarRef.current = calendar; }, [calendar]);
 
@@ -337,9 +399,9 @@ export function CalendarGrid({
         setLiveDrag(null);
       } else if (d.kind === "block-move") {
         if (!d.hasMoved) {
-          const block = blocksRef.current.find(b => b.id === d.blockId);
+          const block = allBlocksRef.current.find(b => b.id === d.blockId);
           const orig = calendarRef.current?.blocks.find(tb => tb.id === d.blockId);
-          if (block && orig) {
+          if (block) {
             setPopup({ calBlock: block, orig, x: e.clientX, y: e.clientY });
           }
         } else {
@@ -516,7 +578,20 @@ export function CalendarGrid({
           {/* Day columns */}
           {ALL_DAYS.map((_, dayIdx) => {
             const isWeekend = dayIdx >= WEEKEND_START;
-            const dayBlocks = blocks.filter(b => (draftBlock?.id === b.id ? draftBlock.day : b.day) === dayIdx);
+
+            const calendarDayBlocks = blocks.filter(b => {
+              const bDay = draftBlock?.id === b.id ? draftBlock.day : b.day;
+              if (bDay !== dayIdx) return false;
+              if (b.date) {
+                // Date-specific block: only show in the week that contains this date
+                const blockDate = new Date(b.date + "T00:00:00");
+                const dayDiff = Math.round((blockDate.getTime() - monday.getTime()) / 86400000);
+                return dayDiff >= 0 && dayDiff < 7;
+              }
+              return true;
+            });
+            const dayMealBlocks = !isWeekend ? mealBlocks.filter(b => b.day === dayIdx) : [];
+            const dayBlocks = [...calendarDayBlocks, ...dayMealBlocks];
             const layout = computeLayout(dayBlocks);
             const daySel = selection.filter(s => s.day === dayIdx);
             const ld = liveDrag?.day === dayIdx ? liveDrag : null;
@@ -596,8 +671,11 @@ export function CalendarGrid({
 
                 {/* Calendar blocks */}
                 {layout.map(b => {
-                  const globalIdx = blocks.findIndex(bl => bl.id === b.id);
-                  if (globalIdx < 0 || globalIdx >= visibleCount) return null;
+                  const isMeal = b.kind === "meal";
+                  if (!isMeal) {
+                    const globalIdx = blocks.findIndex(bl => bl.id === b.id);
+                    if (globalIdx < 0 || globalIdx >= visibleCount) return null;
+                  }
                   const draft = draftBlock?.id === b.id ? draftBlock : null;
                   const dispStart = draft?.start ?? b.start;
                   const dispEnd = draft?.end ?? b.end;
@@ -605,13 +683,14 @@ export function CalendarGrid({
                   const height = (dispEnd - dispStart) * hourPx;
                   const col = draft ? 0 : b.col;
                   const numCols = draft ? 1 : b.numCols;
+                  const delayIdx = isMeal ? 0 : blocks.findIndex(bl => bl.id === b.id);
 
                   return (
                     <div key={b.id} data-block="">
                       <Block
                         b={b} blockStyle={blockStyle}
                         top={top} height={height} col={col} numCols={numCols}
-                        selected={selectedId === b.id} delayIdx={globalIdx}
+                        selected={selectedId === b.id} delayIdx={delayIdx}
                         isDragging={!!draft}
                         isResting={isResting(b)}
                         onStartDrag={e => startBlockDrag(e, b)}
@@ -712,6 +791,23 @@ function Block({
           {b.where && <span style={{ marginLeft: 5, color: "var(--ink-4)" }}>· {b.where}</span>}
         </div>
       )}
+      {!compact && b.dishes && b.dishes.length > 0 && (
+        <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2, overflow: "hidden" }}>
+          {b.dishes.slice(0, Math.max(1, Math.floor((height - 52) / 18))).map((d, i) => (
+            <div key={i} style={{
+              fontSize: 9.5, color: "var(--ink-3)", display: "flex",
+              justifyContent: "space-between", alignItems: "baseline",
+              borderTop: "1px solid color-mix(in oklab, var(--line-soft) 70%, transparent)",
+              paddingTop: 2, gap: 4,
+            }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{d.name}</span>
+              {d.price != null && (
+                <span style={{ flexShrink: 0, fontFamily: "var(--font-mono, monospace)" }}>€{d.price.toFixed(2)}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -769,7 +865,7 @@ function EventPopup({ popup, onClose, onRefine }: {
           <Icon name="calendar" size={13} style={{ color: "var(--ink-3)", flexShrink: 0 }}/>
           <span>{formatT(popup.calBlock.start)} – {formatT(popup.calBlock.end)}</span>
         </div>
-        {popup.calBlock.where && (
+        {popup.calBlock.where && popup.calBlock.kind !== "meal" && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink-2)" }}>
             <span style={{ width: 13, height: 13, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Icon name="globe" size={13} style={{ color: "var(--ink-3)" }}/>
@@ -777,21 +873,42 @@ function EventPopup({ popup, onClose, onRefine }: {
             <span>{popup.calBlock.where}</span>
           </div>
         )}
-        <button
-          onClick={() => onRefine(popup.orig)}
-          style={{
-            marginTop: 4, padding: "7px 10px", borderRadius: 7,
-            background: "var(--surface)", border: "1px solid var(--line)",
-            fontSize: 12, color: "var(--ink-2)", cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 6,
-            transition: "background 100ms ease",
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-sunken)")}
-          onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
-        >
-          <Icon name="refresh" size={12}/>
-          <span>Request change via chat</span>
-        </button>
+        {popup.calBlock.dishes && popup.calBlock.dishes.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 0, marginTop: 2 }}>
+            {popup.calBlock.dishes.map((d, i) => (
+              <div key={i} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "baseline",
+                padding: "4px 0",
+                borderTop: i > 0 ? "1px solid var(--line-soft)" : "none",
+                fontSize: 12, color: "var(--ink-2)",
+              }}>
+                <span style={{ flex: 1, lineHeight: 1.35 }}>{d.name}</span>
+                {d.price != null && (
+                  <span style={{ color: "var(--ink-4)", marginLeft: 8, flexShrink: 0, fontFamily: "var(--font-mono, monospace)", fontSize: 11 }}>
+                    €{d.price.toFixed(2)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {popup.orig && (
+          <button
+            onClick={() => onRefine(popup.orig!)}
+            style={{
+              marginTop: 4, padding: "7px 10px", borderRadius: 7,
+              background: "var(--surface)", border: "1px solid var(--line)",
+              fontSize: 12, color: "var(--ink-2)", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: 6,
+              transition: "background 100ms ease",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-sunken)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
+          >
+            <Icon name="refresh" size={12}/>
+            <span>Request change via chat</span>
+          </button>
+        )}
       </div>
     </div>
   );

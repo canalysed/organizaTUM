@@ -36,6 +36,7 @@ export const TimeBlockSchema = z.object({
   dayOfWeek: DayOfWeekSchema,
   startTime: TimeSchema,
   endTime: TimeSchema,
+  date: z.string().optional(), // ISO YYYY-MM-DD — if set, block only shows on that exact date
   courseId: z.string().optional(),
   location: z.string().optional(),
   notes: z.string().optional(),

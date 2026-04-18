@@ -10,6 +10,7 @@ interface UserState {
   agentPhase: AgentPhase;
   sessionId: string | null;
   notes: UserNote[];
+  selectedCanteenId: string | null;
   setProfile: (profile: UserProfile) => void;
   setIdentity: (identity: UserIdentity) => void;
   setAgentPhase: (phase: AgentPhase) => void;
@@ -18,6 +19,7 @@ interface UserState {
   addNote: (note: UserNote) => void;
   updateNote: (id: string, updates: Partial<UserNote>) => void;
   removeNote: (id: string) => void;
+  setSelectedCanteenId: (id: string | null) => void;
   clearAll: () => void;
 }
 
@@ -29,6 +31,7 @@ export const useUserStore = create<UserState>()(
       agentPhase: "onboarding",
       sessionId: null,
       notes: [],
+      selectedCanteenId: null,
       setProfile: (profile) => set({ profile }),
       setIdentity: (identity) => set({ identity }),
       setAgentPhase: (agentPhase) => set({ agentPhase }),
@@ -41,6 +44,7 @@ export const useUserStore = create<UserState>()(
         })),
       removeNote: (id) =>
         set((s) => ({ notes: s.notes.filter((n) => n.id !== id) })),
+      setSelectedCanteenId: (selectedCanteenId) => set({ selectedCanteenId }),
       clearAll: () =>
         set({ profile: null, identity: null, sessionId: null, notes: [], agentPhase: "onboarding" }),
     }),

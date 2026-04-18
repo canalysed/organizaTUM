@@ -41,6 +41,8 @@ export function AppClient() {
   const setSessionId = useUserStore((s) => s.setSessionId);
   const setNotes = useUserStore((s) => s.setNotes);
   const setIdentity = useUserStore((s) => s.setIdentity);
+  const selectedCanteenId = useUserStore((s) => s.selectedCanteenId);
+  const setSelectedCanteenId = useUserStore((s) => s.setSelectedCanteenId);
   const calendar = useCalendarStore((s) => s.calendar);
   const calendarLoading = useCalendarStore((s) => s.isLoading);
   const setCalendar = useCalendarStore((s) => s.setCalendar);
@@ -56,7 +58,8 @@ export function AppClient() {
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
     const supabase = createBrowserSupabaseClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then((result: { data: { user: { id: string } | null } }) => {
+      const user = result.data.user;
       if (user) {
         setSessionId(user.id);
       } else {
@@ -164,21 +167,27 @@ export function AppClient() {
   const handleCsvImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
-    const blocks = parseTumCsv(text);
-    const now = new Date();
-    const monday = new Date(now);
-    const day = monday.getDay();
-    monday.setDate(monday.getDate() - (day === 0 ? 6 : day - 1));
-    monday.setHours(0, 0, 0, 0);
-    setCalendar({
-      id: crypto.randomUUID(),
-      weekStart: monday.toISOString().split("T")[0]!,
-      blocks,
-      metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
-    });
-    setAppState("split");
     if (csvInputRef.current) csvInputRef.current.value = "";
+    try {
+      const text = await file.text();
+      const blocks = parseTumCsv(text);
+      if (!blocks.length) return;
+      const now = new Date();
+      // weekStart: Monday of current week (calendar navigates from here)
+      const monday = new Date(now);
+      const dow = monday.getDay();
+      monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
+      monday.setHours(0, 0, 0, 0);
+      setCalendar({
+        id: crypto.randomUUID(),
+        weekStart: monday.toISOString().split("T")[0]!,
+        blocks,
+        metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
+      });
+      setAppState("split");
+    } catch {
+      // silent — malformed CSV just does nothing
+    }
   }, [setCalendar]);
 
   const handleSend = useCallback(() => {
@@ -279,6 +288,29 @@ export function AppClient() {
           overflow: "hidden",
           animation: "calendarIn 700ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
         }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", flexShrink: 0, marginBottom: 6 }}>
+            <select
+              value={selectedCanteenId ?? ""}
+              onChange={(e) => setSelectedCanteenId(e.target.value || null)}
+              style={{
+                fontSize: 11.5, color: "var(--ink-3)",
+                padding: "4px 8px", borderRadius: 6,
+                border: "1px solid var(--line)",
+                background: "var(--bg-raised)",
+                cursor: "pointer",
+                outline: "none",
+              }}
+            >
+              <option value="">🍽 Mensa off</option>
+              <option value="mensa-garching">Mensa Garching</option>
+              <option value="mensa-lothstr">Mensa Lothstraße</option>
+              <option value="mensa-arcisstr">Mensa Arcisstr.</option>
+              <option value="mensa-leopoldstr">Mensa Leopoldstr.</option>
+              <option value="mensa-martinsried">Mensa Martinsried</option>
+              <option value="mensa-weihenstephan">Mensa Weihenstephan</option>
+              <option value="mensa-pasing">Mensa Pasing</option>
+            </select>
+          </div>
           <CalendarGrid
             calendar={calendar}
             isLoading={calendarLoading}
@@ -291,6 +323,7 @@ export function AppClient() {
             selection={selection}
             onSelectionChange={setSelection}
             onImportCsv={() => csvInputRef.current?.click()}
+            selectedCanteenId={selectedCanteenId}
           />
         </div>
 
