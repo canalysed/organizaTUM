@@ -14,6 +14,9 @@ interface TopBarProps {
   appState: AppState;
   buildProgress: number;
   onNavigate: (view: View) => void;
+  onHome?: () => void;
+  darkMode?: boolean;
+  onToggleDark?: () => void;
 }
 
 function getInitials(name: string | undefined, email: string | undefined): string {
@@ -27,7 +30,7 @@ function getInitials(name: string | undefined, email: string | undefined): strin
 }
 
 
-export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
+export function TopBar({ appState, buildProgress, onNavigate, onHome, darkMode, onToggleDark }: TopBarProps) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -75,7 +78,7 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
       {/* Logo */}
       <button
         style={{ display: "flex", alignItems: "center", cursor: "pointer", padding: "2px 0" }}
-        onClick={() => onNavigate("app")}
+        onClick={() => appState === "split" && onHome ? onHome() : onNavigate("app")}
       >
         <span style={{ fontSize: 15.5, letterSpacing: "-0.01em", lineHeight: 1 }}>
           <span style={{ fontWeight: 400, color: "var(--ink-2)" }}>Organiza</span>
@@ -85,6 +88,17 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
 
       {/* Right */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {onToggleDark && (
+          <button
+            onClick={onToggleDark}
+            style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid transparent", background: "transparent", color: "var(--ink-3)", transition: "background 120ms ease, color 120ms ease" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.color = "var(--ink-2)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}
+            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {darkMode ? <SunIcon /> : <MoonIcon />}
+          </button>
+        )}
         {!compact && buildProgress < 1 && appState !== "landing" && (
           <div style={{
             display: "flex", alignItems: "center", gap: 6,
@@ -171,6 +185,26 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
   );
 }
 

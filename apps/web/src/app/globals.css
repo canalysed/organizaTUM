@@ -47,6 +47,37 @@
   --break-bg:     oklch(96% 0.02 150);
 }
 
+/* ── Dark theme ────────────────────────────────────────────────────────── */
+
+[data-theme="dark"] {
+  --bg:         oklch(13% 0.005 65);
+  --bg-raised:  oklch(16% 0.005 65);
+  --bg-sunken:  oklch(10% 0.005 65);
+  --surface:    oklch(19% 0.004 65);
+
+  --line:       oklch(28% 0.010 65);
+  --line-soft:  oklch(22% 0.007 65);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+  --shadow-lg: 0 8px 28px rgba(0,0,0,0.6), 0 4px 8px rgba(0,0,0,0.4);
+
+  --ink:   oklch(94% 0.007 65);
+  --ink-2: oklch(77% 0.009 65);
+  --ink-3: oklch(57% 0.009 65);
+  --ink-4: oklch(40% 0.007 65);
+
+  --tum-soft:  oklch(18% 0.04 247);
+  --tum-line:  oklch(32% 0.08 247);
+
+  --lecture-bg:  oklch(17% 0.04 247);
+  --exercise-bg: oklch(17% 0.04 170);
+  --study-bg:    oklch(17% 0.03 65);
+  --meal-bg:     oklch(17% 0.04 32);
+  --leisure-bg:  oklch(17% 0.04 315);
+  --break-bg:    oklch(17% 0.02 150);
+}
+
 /* ── Base ──────────────────────────────────────────────────────────────── */
 
 *, *::before, *::after {
@@ -67,6 +98,7 @@ body {
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  transition: background 180ms ease, color 180ms ease;
 }
 
 button {

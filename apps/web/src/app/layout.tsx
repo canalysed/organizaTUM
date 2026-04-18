@@ -29,6 +29,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${instrumentSerif.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        {/* Anti-FOUC: apply dark mode before hydration */}
+        <script dangerouslySetInnerHTML={{ __html: `try{const s=JSON.parse(localStorage.getItem('organizatum-user')||'{}');if(s.state?.darkMode)document.documentElement.setAttribute('data-theme','dark');}catch(e){}` }}/>
+      </head>
       <body style={{ fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
         {children}
       </body>

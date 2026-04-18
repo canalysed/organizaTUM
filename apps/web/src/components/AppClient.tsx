@@ -43,6 +43,13 @@ export function AppClient() {
   const setIdentity = useUserStore((s) => s.setIdentity);
   const selectedCanteenId = useUserStore((s) => s.selectedCanteenId);
   const setSelectedCanteenId = useUserStore((s) => s.setSelectedCanteenId);
+  const darkMode = useUserStore((s) => s.darkMode);
+  const toggleDarkMode = useUserStore((s) => s.toggleDarkMode);
+
+  // Apply dark mode to DOM whenever it changes
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
   const calendar = useCalendarStore((s) => s.calendar);
   const calendarLoading = useCalendarStore((s) => s.isLoading);
   const setCalendar = useCalendarStore((s) => s.setCalendar);
@@ -110,7 +117,31 @@ export function AppClient() {
     fetch(`/api/calendar?sessionId=${sessionId}`)
       .then((r) => r.json())
       .then((json: { calendar: unknown }) => {
-        if (!json.calendar) return;
+        if (!json.calendar) {
+          // Check if there's a pending CSV from signup
+          const pendingCsv = localStorage.getItem("pending_csv");
+          if (pendingCsv) {
+            localStorage.removeItem("pending_csv");
+            try {
+              const blocks = parseTumCsv(pendingCsv);
+              if (blocks.length) {
+                const now = new Date();
+                const monday = new Date(now);
+                const dow = monday.getDay();
+                monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
+                monday.setHours(0, 0, 0, 0);
+                setCalendar({
+                  id: crypto.randomUUID(),
+                  weekStart: monday.toISOString().split("T")[0]!,
+                  blocks,
+                  metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
+                });
+                setAppState("split");
+              }
+            } catch { /* ignore malformed CSV */ }
+          }
+          return;
+        }
         const parsed = WeeklyCalendarSchema.safeParse(json.calendar);
         if (parsed.success) {
           setCalendar(parsed.data);
@@ -258,7 +289,10 @@ export function AppClient() {
 
         {/* Navbar — column 1, row 1 only */}
         <div style={{ gridColumn: 1, gridRow: 1, borderRight: "1px solid var(--line)", zIndex: 10 }}>
-          <TopBar appState={appState} buildProgress={buildProgress} onNavigate={setView}/>
+          <TopBar appState={appState} buildProgress={buildProgress} onNavigate={setView}
+            onHome={() => setAppState(messages.length > 0 ? "chatting" : "landing")}
+            darkMode={darkMode} onToggleDark={toggleDarkMode}
+          />
         </div>
 
         {/* Sidebar — column 1, row 2 */}
@@ -328,14 +362,11 @@ export function AppClient() {
         </div>
 
         <TweaksPanel
-          open={tweaksOpen}
-          setOpen={setTweaksOpen}
-          density={density}
-          setDensity={setDensity}
-          blockStyle={blockStyle}
-          setBlockStyle={setBlockStyle}
-          appState={appState}
-          setAppState={setAppState}
+          open={tweaksOpen} setOpen={setTweaksOpen}
+          density={density} setDensity={setDensity}
+          blockStyle={blockStyle} setBlockStyle={setBlockStyle}
+          appState={appState} setAppState={setAppState}
+          darkMode={darkMode} onToggleDark={toggleDarkMode}
         />
       </div>
     );
@@ -345,7 +376,9 @@ export function AppClient() {
   return (
     <div style={{ height: "100vh", width: "100vw", display: "flex", flexDirection: "column", background: "var(--bg)", position: "relative", overflow: "hidden" }}>
       <input ref={csvInputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={handleCsvImport} />
-      <TopBar appState={appState} buildProgress={buildProgress} onNavigate={setView}/>
+      <TopBar appState={appState} buildProgress={buildProgress} onNavigate={setView}
+        darkMode={darkMode} onToggleDark={toggleDarkMode}
+      />
 
       {view === "profile" ? (
         <ProfilePage onClose={() => setView("app")}/>
@@ -382,14 +415,11 @@ export function AppClient() {
       )}
 
       <TweaksPanel
-        open={tweaksOpen}
-        setOpen={setTweaksOpen}
-        density={density}
-        setDensity={setDensity}
-        blockStyle={blockStyle}
-        setBlockStyle={setBlockStyle}
-        appState={appState}
-        setAppState={setAppState}
+        open={tweaksOpen} setOpen={setTweaksOpen}
+        density={density} setDensity={setDensity}
+        blockStyle={blockStyle} setBlockStyle={setBlockStyle}
+        appState={appState} setAppState={setAppState}
+        darkMode={darkMode} onToggleDark={toggleDarkMode}
       />
     </div>
   );

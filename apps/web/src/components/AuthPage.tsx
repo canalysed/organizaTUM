@@ -9,7 +9,6 @@ type SignupStep = 1 | 2;
 type SlideDir = "none" | "exit-left" | "enter-right" | "exit-right" | "enter-left";
 
 const STUDY_STYLES = ["Visual", "Reading/Writing", "Hands-on", "Mixed"];
-const DIET_OPTIONS = ["No preference", "Vegetarian", "Vegan", "Halal", "Kosher", "Other"];
 
 const SLIDE_ANIM: Record<SlideDir, string | undefined> = {
   "none":        undefined,
@@ -32,7 +31,6 @@ export function AuthPage() {
 
   // Step 2
   const [studyStyle, setStudyStyle] = useState("");
-  const [diet, setDiet] = useState("");
   const [program, setProgram] = useState("");
   const [semester, setSemester] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -111,7 +109,6 @@ export function AuthPage() {
           full_name: fullName,
           semester: semester ? parseInt(semester, 10) : null,
           study_style: studyStyle || null,
-          diet: diet || null,
           program: program || null,
         },
       },
@@ -121,6 +118,13 @@ export function AuthPage() {
       setError(err.message);
     } else {
       setSuccess("Account created. Signing you in…");
+      // Store CSV for the main app to load after login
+      if (csvFile) {
+        try {
+          const text = await csvFile.text();
+          localStorage.setItem("pending_csv", text);
+        } catch { /* ignore */ }
+      }
       const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
       if (!signInErr) {
         router.push("/");
@@ -145,8 +149,8 @@ export function AuthPage() {
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ lineHeight: 1.1, display: "inline-flex", alignItems: "baseline", gap: 1 }}>
-            <span className="serif" style={{ fontWeight: 400, color: "var(--ink-2)", fontSize: 32 }}>Organiza</span>
-            <span style={{ fontWeight: 700, color: "var(--tum)", fontSize: 42 }}>TUM</span>
+            <span className="serif" style={{ fontWeight: 400, fontStyle: "italic", color: "var(--ink-2)", fontSize: 40 }}>Organiza</span>
+            <span className="serif" style={{ fontWeight: 700, color: "var(--tum)", fontSize: 40 }}>TUM</span>
           </div>
           <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 8 }}>
             Your AI-powered TUM scheduler
@@ -240,14 +244,6 @@ export function AuthPage() {
                     style={{ ...inputStyle, appearance: "none" }}>
                     <option value="">Select your style…</option>
                     {STUDY_STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </Field>
-
-                <Field label="Dietary preference">
-                  <select required value={diet} onChange={(e) => setDiet(e.target.value)}
-                    style={{ ...inputStyle, appearance: "none" }}>
-                    <option value="">Select preference…</option>
-                    {DIET_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </Field>
 

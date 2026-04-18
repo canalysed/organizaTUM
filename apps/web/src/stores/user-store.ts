@@ -11,6 +11,7 @@ interface UserState {
   sessionId: string | null;
   notes: UserNote[];
   selectedCanteenId: string | null;
+  darkMode: boolean;
   setProfile: (profile: UserProfile) => void;
   setIdentity: (identity: UserIdentity) => void;
   setAgentPhase: (phase: AgentPhase) => void;
@@ -20,6 +21,7 @@ interface UserState {
   updateNote: (id: string, updates: Partial<UserNote>) => void;
   removeNote: (id: string) => void;
   setSelectedCanteenId: (id: string | null) => void;
+  toggleDarkMode: () => void;
   clearAll: () => void;
 }
 
@@ -32,6 +34,7 @@ export const useUserStore = create<UserState>()(
       sessionId: null,
       notes: [],
       selectedCanteenId: null,
+      darkMode: false,
       setProfile: (profile) => set({ profile }),
       setIdentity: (identity) => set({ identity }),
       setAgentPhase: (agentPhase) => set({ agentPhase }),
@@ -45,14 +48,14 @@ export const useUserStore = create<UserState>()(
       removeNote: (id) =>
         set((s) => ({ notes: s.notes.filter((n) => n.id !== id) })),
       setSelectedCanteenId: (selectedCanteenId) => set({ selectedCanteenId }),
+      toggleDarkMode: () => set((s) => ({ darkMode: !s.darkMode })),
       clearAll: () =>
         set({ profile: null, identity: null, sessionId: null, notes: [], agentPhase: "onboarding" }),
     }),
     {
       name: "organizatum-user",
       storage: createJSONStorage(() => localStorage),
-      // Nothing persisted — auth session cookies handle identity
-      partialize: () => ({}),
+      partialize: (s) => ({ darkMode: s.darkMode, selectedCanteenId: s.selectedCanteenId }),
     },
   ),
 );

@@ -15,6 +15,8 @@ interface TweaksPanelProps {
   setBlockStyle: (s: BlockStyle) => void;
   appState: AppState;
   setAppState: (s: AppState) => void;
+  darkMode: boolean;
+  onToggleDark: () => void;
 }
 
 export function TweaksPanel({
@@ -22,6 +24,7 @@ export function TweaksPanel({
   density, setDensity,
   blockStyle, setBlockStyle,
   appState, setAppState,
+  darkMode, onToggleDark,
 }: TweaksPanelProps) {
   if (!open) {
     return (
@@ -86,6 +89,13 @@ export function TweaksPanel({
             <SegBtn active={blockStyle === "muted"}  onClick={() => setBlockStyle("muted")}>Muted</SegBtn>
             <SegBtn active={blockStyle === "mono"}   onClick={() => setBlockStyle("mono")}>Mono</SegBtn>
             <SegBtn active={blockStyle === "accent"} onClick={() => setBlockStyle("accent")}>Accent</SegBtn>
+          </Seg>
+        </Group>
+
+        <Group label="Theme">
+          <Seg>
+            <SegBtn active={!darkMode} onClick={() => { if (darkMode) onToggleDark(); }}>Light</SegBtn>
+            <SegBtn active={darkMode}  onClick={() => { if (!darkMode) onToggleDark(); }}>Dark</SegBtn>
           </Seg>
         </Group>
       </div>

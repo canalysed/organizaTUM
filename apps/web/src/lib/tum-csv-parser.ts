@@ -13,8 +13,10 @@ const DAY_MAP: Record<string, DayOfWeek> = {
 const TYPE_MAP: Record<string, BlockType> = {
   VO: "lecture",
   UE: "uebung",
-  SE: "commitment",
+  SE: "lecture",
   PR: "uebung",
+  SV: "lecture",
+  EX: "exercise",
 };
 
 interface CsvRow {
