@@ -18,6 +18,7 @@ interface UserState {
   addNote: (note: UserNote) => void;
   updateNote: (id: string, updates: Partial<UserNote>) => void;
   removeNote: (id: string) => void;
+  clearAll: () => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -40,12 +41,14 @@ export const useUserStore = create<UserState>()(
         })),
       removeNote: (id) =>
         set((s) => ({ notes: s.notes.filter((n) => n.id !== id) })),
+      clearAll: () =>
+        set({ profile: null, identity: null, sessionId: null, notes: [], agentPhase: "onboarding" }),
     }),
     {
       name: "organizatum-user",
       storage: createJSONStorage(() => localStorage),
-      // Only persist sessionId — profile, identity, and notes are loaded from Supabase on boot
-      partialize: (state) => ({ sessionId: state.sessionId }),
+      // Nothing persisted — auth session cookies handle identity
+      partialize: () => ({}),
     },
   ),
 );

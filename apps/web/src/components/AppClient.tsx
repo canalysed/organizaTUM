@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useChat, type Message } from "@ai-sdk/react";
 import { WeeklyCalendarSchema, UserNoteSchema, UserIdentitySchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
+import { createBrowserSupabaseClient } from "@/lib/supabase";
 import { useUserStore } from "@/stores/user-store";
 import { useCalendarStore } from "@/stores/calendar-store";
 import { parseTumCsv } from "@/lib/tum-csv-parser";
@@ -49,7 +50,15 @@ export function AppClient() {
     initialMessages,
   });
 
-  // On mount: hydrate notes and calendar from Supabase if sessionId exists
+  // On mount: resolve sessionId from auth, then hydrate data
+  useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setSessionId(user.id);
+    });
+  }, [setSessionId]);
+
+  // Hydrate profile, notes, identity, calendar when sessionId is available
   useEffect(() => {
     if (!sessionId) return;
 

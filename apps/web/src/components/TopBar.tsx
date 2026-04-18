@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "./Icon";
+import { useUserStore } from "@/stores/user-store";
+import { createBrowserSupabaseClient } from "@/lib/supabase";
 
 type AppState = "landing" | "chatting" | "split";
 type View = "app" | "profile";
@@ -12,10 +15,35 @@ interface TopBarProps {
   onNavigate: (view: View) => void;
 }
 
+function getInitials(name: string | undefined, email: string | undefined): string {
+  if (name && name.trim()) {
+    const parts = name.trim().split(" ");
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  if (email) return email[0].toUpperCase();
+  return "?";
+}
+
+function getDisplayName(name: string | undefined, email: string | undefined): string {
+  if (name && name.trim()) return name.trim().split(" ")[0];
+  if (email) return email.split("@")[0];
+  return "Account";
+}
+
 export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const flat = appState === "landing";
+
+  const identity = useUserStore((s) => s.identity);
+  const clearAll = useUserStore((s) => s.clearAll);
+
+  const displayName = getDisplayName(identity?.fullName, identity?.tumEmail);
+  const initials = getInitials(identity?.fullName, identity?.tumEmail);
+  const fullName = identity?.fullName ?? identity?.tumEmail ?? "Your account";
+  const email = identity?.tumEmail ?? "";
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -27,6 +55,14 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [menuOpen]);
+
+  const handleSignOut = async () => {
+    setMenuOpen(false);
+    const supabase = createBrowserSupabaseClient();
+    await supabase.auth.signOut();
+    clearAll();
+    router.push("/login");
+  };
 
   return (
     <div style={{
@@ -106,13 +142,13 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
             }}
             onClick={() => setMenuOpen((o) => !o)}
           >
-            <span>Jonas</span>
+            <span>{displayName}</span>
             <div style={{
               width: 26, height: 26, borderRadius: "50%",
               background: "oklch(68% 0.09 55)", color: "#fff",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 11, fontWeight: 600, letterSpacing: "0.02em",
-            }}>JW</div>
+            }}>{initials}</div>
           </button>
 
           {menuOpen && (
@@ -134,10 +170,10 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
                   background: "oklch(68% 0.09 55)", color: "#fff",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 15, fontWeight: 600,
-                }}>JW</div>
+                }}>{initials}</div>
                 <div>
-                  <div style={{ fontSize: 14, color: "var(--ink)", fontWeight: 500 }}>Jonas Weber</div>
-                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 1 }}>jonas.weber@tum.de</div>
+                  <div style={{ fontSize: 14, color: "var(--ink)", fontWeight: 500 }}>{fullName}</div>
+                  {email && <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 1 }}>{email}</div>}
                 </div>
               </div>
               <div style={{ padding: 4 }}>
@@ -147,7 +183,7 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
                 <MenuItem icon="calendar">My semesters</MenuItem>
                 <MenuItem icon="book">Course library</MenuItem>
                 <div style={{ height: 1, background: "var(--line-soft)", margin: "4px 2px" }}/>
-                <MenuItem icon="logout">Sign out</MenuItem>
+                <MenuItem icon="logout" onClick={handleSignOut}>Sign out</MenuItem>
               </div>
             </div>
           )}
