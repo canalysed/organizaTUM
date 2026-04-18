@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import type { TimeBlock } from "@organizaTUM/shared";
-import { Icon } from "@/components/Icon";
+import { useUserStore } from "@/stores/user-store";
 import { Composer } from "./Composer";
 
-const SUGGESTIONS = [
-  "Plan my week around 4 CS courses",
-  "I learn better with short sessions",
-  "Help me fit bouldering on Tuesdays",
-  "Review my schedule for next week",
-];
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 interface ChatCenterProps {
   input: string;
@@ -19,70 +19,83 @@ interface ChatCenterProps {
   onSuggestion: (s: string) => void;
   refineBlock?: TimeBlock | null;
   onClearBlock?: () => void;
+  onViewCalendar: () => void;
 }
 
-export function ChatCenter({ input, setInput, onSend, onSuggestion, refineBlock, onClearBlock }: ChatCenterProps) {
+export function ChatCenter({ input, setInput, onSend, refineBlock, onClearBlock, onViewCalendar }: ChatCenterProps) {
+  const identity = useUserStore((s) => s.identity);
+  const firstName = identity?.fullName?.trim().split(" ")[0] ?? identity?.tumEmail?.split("@")[0] ?? null;
+  const greeting = getGreeting();
+
   return (
     <div style={{
       flex: 1,
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      padding: "0 24px", gap: 32,
+      padding: "0 24px",
+      gap: 24,
     }}>
-      {/* Greeting */}
-      <div style={{ textAlign: "center", maxWidth: 620, animation: "fadeUp 600ms 80ms both" }}>
-        <div style={{
-          fontSize: 13, color: "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase",
-          marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-        }}>
-          <Icon name="sparkle" size={13}/> organizaTUM · Week 16
+      {/* Heading */}
+      <div style={{ textAlign: "center", width: "100%", maxWidth: 600, animation: "fadeUp 600ms 80ms both" }}>
+        <div className="serif" style={{ fontSize: 46, lineHeight: 1.12, display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
+          <span style={{ color: "var(--ink)" }}>
+            {greeting}{firstName ? `, ${firstName}.` : "."}
+          </span>
+          <span style={{ fontStyle: "italic", color: "var(--tum)", opacity: 0.9 }}>
+            Shall we plan your week?
+          </span>
         </div>
-        <div className="serif" style={{ fontSize: 52, lineHeight: 1.1, color: "var(--ink)", display: "flex", flexDirection: "column", gap: 2, marginBottom: 20 }}>
-          <span>Good afternoon, Jonas.</span>
-          <span style={{ fontStyle: "italic", color: "var(--ink-2)" }}>Shall we plan your week?</span>
-        </div>
-        <div style={{ fontSize: 16, color: "var(--ink-3)", maxWidth: 500, margin: "0 auto", lineHeight: 1.5 }}>
+        <div style={{ fontSize: 15.5, color: "var(--ink-3)", maxWidth: 460, margin: "0 auto", lineHeight: 1.55 }}>
           Tell me about your courses, how you like to study, and what's already fixed.
-          I'll start drawing the calendar once I know enough.
         </div>
       </div>
 
       {/* Composer */}
-      <Composer
-        variant="center"
-        value={input}
-        onChange={setInput}
-        onSend={onSend}
-        placeholder="What are you taking this semester?"
-        refineBlock={refineBlock}
-        onClearBlock={onClearBlock}
-      />
+      <div style={{ width: "100%", maxWidth: 640, animation: "fadeUp 600ms 160ms both" }}>
+        <Composer
+          variant="center"
+          value={input}
+          onChange={setInput}
+          onSend={onSend}
+          placeholder="What are you taking this semester?"
+          refineBlock={refineBlock}
+          onClearBlock={onClearBlock}
+        />
+      </div>
 
-      {/* Suggestions */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", maxWidth: 640, animation: "fadeUp 600ms 240ms both" }}>
-        {SUGGESTIONS.map((s) => (
-          <SuggestionChip key={s} onClick={() => onSuggestion(s)}>{s}</SuggestionChip>
-        ))}
+      {/* Calendar shortcut */}
+      <div style={{ animation: "fadeUp 600ms 240ms both" }}>
+        <ViewCalendarButton onClick={onViewCalendar}/>
       </div>
     </div>
   );
 }
 
-function SuggestionChip({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+function ViewCalendarButton({ onClick }: { onClick: () => void }) {
   const [hov, setHov] = useState(false);
   return (
     <button
-      style={{
-        padding: "8px 14px", fontSize: 13, color: "var(--ink-2)",
-        background: hov ? "var(--surface)" : "var(--bg-raised)",
-        border: hov ? "1px solid var(--ink-4)" : "1px solid var(--line)",
-        borderRadius: 999,
-        transition: "all 160ms ease",
-      }}
       onClick={onClick}
+      style={{
+        display: "flex", alignItems: "center", gap: 7,
+        fontSize: 13, fontWeight: 500,
+        color: hov ? "#fff" : "var(--tum)",
+        padding: "8px 18px", borderRadius: 999,
+        border: "1.5px solid var(--tum)",
+        background: hov ? "var(--tum)" : "var(--tum-soft)",
+        cursor: "pointer",
+        transition: "all 150ms ease",
+      }}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
     >
-      {children}
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      Open Calendar
     </button>
   );
 }
+

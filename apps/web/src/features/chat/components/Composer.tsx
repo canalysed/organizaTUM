@@ -145,16 +145,37 @@ export function Composer({
           <AttachBtn onClick={() => fileRef.current?.click()} label="Attach file"><Icon name="plus" size={15}/></AttachBtn>
           <AttachBtn onClick={() => fileRef.current?.click()} label="Screenshot"><Icon name="grid" size={14}/></AttachBtn>
         </div>
-        <button
-          style={{ width: 34, height: 34, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", background: disabled || empty ? "var(--bg-sunken)" : "var(--ink)", color: disabled || empty ? "var(--ink-4)" : "var(--bg-raised)", transition: "all 180ms ease" }}
-          disabled={disabled || empty}
-          onClick={() => { onSend(); setAttachments([]); }}
-          aria-label="Send"
-        >
-          <Icon name="arrowRight" size={15}/>
-        </button>
+        <SendBtn disabled={!!disabled || empty} onClick={() => { onSend(); setAttachments([]); }}/>
       </div>
     </div>
+  );
+}
+
+function SendBtn({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  const [hov, setHov] = useState(false);
+  const active = !disabled;
+  return (
+    <button
+      style={{
+        width: 34, height: 34, borderRadius: 9,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: disabled
+          ? "var(--bg-sunken)"
+          : hov
+          ? "color-mix(in oklab, var(--tum) 80%, black)"
+          : "var(--tum)",
+        color: disabled ? "var(--ink-4)" : "#fff",
+        transition: "background 140ms ease",
+        transform: active && hov ? "scale(1.06)" : "scale(1)",
+      }}
+      disabled={disabled}
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      aria-label="Send"
+    >
+      <Icon name="arrowRight" size={15}/>
+    </button>
   );
 }
 

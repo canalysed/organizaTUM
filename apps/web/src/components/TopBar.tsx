@@ -99,17 +99,6 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
           </div>
         )}
 
-        {!compact && (
-          <>
-            <IconBtn label="Notifications" dot>
-              <Icon name="bell" size={15}/>
-            </IconBtn>
-            <IconBtn label="Help">
-              <Icon name="help" size={15}/>
-            </IconBtn>
-            <div style={{ width: 1, height: 20, background: "var(--line)", margin: "0 2px" }}/>
-          </>
-        )}
 
         <div style={{ position: "relative" }} ref={menuRef}>
           <button
@@ -195,34 +184,6 @@ function HamburgerIcon() {
   );
 }
 
-function IconBtn({ children, label, dot }: { children: React.ReactNode; label: string; dot?: boolean }) {
-  const [hov, setHov] = useState(false);
-  return (
-    <button
-      style={{
-        width: 32, height: 32, borderRadius: 8,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        color: hov ? "var(--ink-2)" : "var(--ink-3)",
-        background: hov ? "var(--surface)" : "transparent",
-        transition: "background 120ms ease, color 120ms ease",
-        position: "relative",
-      }}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      aria-label={label}
-    >
-      {children}
-      {dot && (
-        <span style={{
-          position: "absolute", top: 7, right: 7,
-          width: 5, height: 5, borderRadius: "50%",
-          background: "var(--tum)",
-          border: "1.5px solid var(--bg-raised)",
-        }}/>
-      )}
-    </button>
-  );
-}
 
 function MenuItem({ icon, children, onClick }: { icon: string; children: React.ReactNode; onClick?: () => void }) {
   const [hov, setHov] = useState(false);

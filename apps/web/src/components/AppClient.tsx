@@ -352,7 +352,7 @@ export function AppClient() {
       ) : (
         <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
           {appState === "landing" && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", animation: "fadeIn 500ms both" }}>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 500ms both" }}>
               <ChatCenter
                 input={input}
                 setInput={setInput}
@@ -360,30 +360,8 @@ export function AppClient() {
                 onSuggestion={handleSuggestion}
                 refineBlock={refineBlock}
                 onClearBlock={() => setRefineBlock(null)}
+                onViewCalendar={() => setAppState("split")}
               />
-              <div style={{ display: "flex", justifyContent: "center", paddingBottom: 32, animation: "fadeUp 600ms 300ms both" }}>
-                <button
-                  onClick={() => csvInputRef.current?.click()}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    fontSize: 12, color: "var(--ink-3)",
-                    padding: "6px 14px", borderRadius: 999,
-                    border: "1px dashed var(--line)",
-                    background: "transparent",
-                    cursor: "pointer",
-                    transition: "all 160ms ease",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--ink-2)"; e.currentTarget.style.borderColor = "var(--ink-4)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--ink-3)"; e.currentTarget.style.borderColor = "var(--line)"; }}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                  Import TUM Online CSV
-                </button>
-              </div>
             </div>
           )}
 
