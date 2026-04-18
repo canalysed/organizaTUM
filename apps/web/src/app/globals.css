@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design system — Paper theme ─────────────────────────────────────────── */
+
+:root {
+  /* Backgrounds */
+  --bg:         oklch(97% 0.006 65);
+  --bg-raised:  oklch(99% 0.003 65);
+  --bg-sunken:  oklch(94% 0.009 65);
+  --surface:    oklch(98% 0.004 65);
+
+  /* Borders */
+  --line:       oklch(87% 0.012 65);
+  --line-soft:  oklch(92% 0.007 65);
+
+  /* Text hierarchy */
+  --ink:   oklch(16% 0.012 65);
+  --ink-2: oklch(36% 0.012 65);
+  --ink-3: oklch(56% 0.010 65);
+  --ink-4: oklch(72% 0.008 65);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 28px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.06);
+
+  /* Block-kind colors */
+  --lecture:      oklch(50% 0.15 255);
+  --lecture-bg:   oklch(96% 0.04 255);
+  --exercise:     oklch(50% 0.14 170);
+  --exercise-bg:  oklch(96% 0.04 170);
+  --study:        oklch(52% 0.13 65);
+  --study-bg:     oklch(96% 0.03 65);
+  --meal:         oklch(56% 0.15 32);
+  --meal-bg:      oklch(96% 0.04 32);
+  --leisure:      oklch(52% 0.14 315);
+  --leisure-bg:   oklch(96% 0.04 315);
+  --break:        oklch(56% 0.08 150);
+  --break-bg:     oklch(96% 0.02 150);
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+textarea, input {
+  font-family: inherit;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────────────── */
+
+.scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+/* ── Serif utility ─────────────────────────────────────────────────────── */
+
+.serif {
+  font-family: 'Instrument Serif', serif;
+}
+
+/* ── Keyframes ─────────────────────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes splitIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes calendarIn {
+  from { opacity: 0; transform: translateX(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes blockIn {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes typingPulse {
+  0%, 60%, 100% { opacity: 0.3; transform: scale(0.85); }
+  30%           { opacity: 1;   transform: scale(1); }
+}

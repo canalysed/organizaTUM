@@ -1,0 +1,46 @@
+{
+  "location": "Mensa Garching",
+  "week": "2026-04-20",
+  "days": [
+    {
+      "day": "monday", "date": "2026-04-21",
+      "menus": [
+        { "counter": "Tagesgericht 1", "name": "Hähnchenschnitzel mit Kartoffeln und Gemüse", "price": 3.60, "tags": ["meat"] },
+        { "counter": "Tagesgericht 2", "name": "Gemüsecurry mit Basmati-Reis", "price": 2.90, "tags": ["vegan", "vegetarian"] },
+        { "counter": "Pasta", "name": "Spaghetti Bolognese", "price": 2.80, "tags": ["meat"] }
+      ]
+    },
+    {
+      "day": "tuesday", "date": "2026-04-22",
+      "menus": [
+        { "counter": "Tagesgericht 1", "name": "Schweinebraten mit Knödel und Sauerkraut", "price": 3.80, "tags": ["meat", "pork"] },
+        { "counter": "Tagesgericht 2", "name": "Spinat-Ricotta-Cannelloni mit Tomatensauce", "price": 3.10, "tags": ["vegetarian"] },
+        { "counter": "Pasta", "name": "Penne Arrabiata", "price": 2.60, "tags": ["vegan", "vegetarian"] }
+      ]
+    },
+    {
+      "day": "wednesday", "date": "2026-04-23",
+      "menus": [
+        { "counter": "Tagesgericht 1", "name": "Lachsfilet mit Dillsauce und Salzkartoffeln", "price": 4.20, "tags": ["fish"] },
+        { "counter": "Tagesgericht 2", "name": "Falafel mit Couscous und Joghurtsauce", "price": 3.00, "tags": ["vegetarian"] },
+        { "counter": "Pasta", "name": "Rigatoni mit Gemüsesauce", "price": 2.60, "tags": ["vegan", "vegetarian"] }
+      ]
+    },
+    {
+      "day": "thursday", "date": "2026-04-24",
+      "menus": [
+        { "counter": "Tagesgericht 1", "name": "Rindergulasch mit Spätzle", "price": 4.00, "tags": ["meat"] },
+        { "counter": "Tagesgericht 2", "name": "Kürbiscremesuppe mit Brot", "price": 2.40, "tags": ["vegan", "vegetarian"] },
+        { "counter": "Pasta", "name": "Linguine Carbonara", "price": 2.90, "tags": ["meat"] }
+      ]
+    },
+    {
+      "day": "friday", "date": "2026-04-25",
+      "menus": [
+        { "counter": "Tagesgericht 1", "name": "Forelle Müllerin mit Kartoffeln", "price": 4.50, "tags": ["fish"] },
+        { "counter": "Tagesgericht 2", "name": "Tofu-Gemüsepfanne mit Reis", "price": 3.00, "tags": ["vegan", "vegetarian"] },
+        { "counter": "Pasta", "name": "Farfalle mit Pestosauce", "price": 2.70, "tags": ["vegetarian"] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+[
+  {
+    "id": "ma0901",
+    "name": "Lineare Algebra für Informatiker",
+    "shortName": "LinAlg",
+    "credits": 8,
+    "difficulty": "hard",
+    "lectureBlocks": [
+      { "id": "linalg-lec-mon", "type": "lecture", "title": "LinAlg Lecture", "dayOfWeek": "monday", "startTime": "10:00", "endTime": "12:00", "location": "MI HS 1", "isFixed": true },
+      { "id": "linalg-lec-wed", "type": "lecture", "title": "LinAlg Lecture", "dayOfWeek": "wednesday", "startTime": "10:00", "endTime": "12:00", "location": "MI HS 1", "isFixed": true }
+    ],
+    "uebungsklassen": [
+      { "id": "linalg-ue-tue", "dayOfWeek": "tuesday", "startTime": "14:00", "endTime": "16:00", "room": "MI 00.08.038", "spotsAvailable": 25 },
+      { "id": "linalg-ue-fri", "dayOfWeek": "friday", "startTime": "10:00", "endTime": "12:00", "room": "MI 00.08.055", "spotsAvailable": 25 }
+    ],
+    "weeklyStudyHoursRecommended": 6,
+    "tags": ["math", "proof-based", "first-year"]
+  },
+  {
+    "id": "in0001",
+    "name": "Einführung in die Informatik 1",
+    "shortName": "EidI",
+    "credits": 10,
+    "difficulty": "medium",
+    "lectureBlocks": [
+      { "id": "eidi-lec-tue", "type": "lecture", "title": "EidI Lecture", "dayOfWeek": "tuesday", "startTime": "09:00", "endTime": "11:00", "location": "MI HS 2", "isFixed": true },
+      { "id": "eidi-lec-thu", "type": "lecture", "title": "EidI Lecture", "dayOfWeek": "thursday", "startTime": "09:00", "endTime": "11:00", "location": "MI HS 2", "isFixed": true }
+    ],
+    "uebungsklassen": [
+      { "id": "eidi-ue-mon", "dayOfWeek": "monday", "startTime": "14:00", "endTime": "16:00", "room": "MI 02.07.023", "spotsAvailable": 20 },
+      { "id": "eidi-ue-wed", "dayOfWeek": "wednesday", "startTime": "14:00", "endTime": "16:00", "room": "MI 02.07.023", "spotsAvailable": 20 }
+    ],
+    "weeklyStudyHoursRecommended": 4,
+    "tags": ["programming", "python", "haskell", "first-year"]
+  },
+  {
+    "id": "ma0902",
+    "name": "Analysis für Informatiker",
+    "shortName": "Analysis",
+    "credits": 8,
+    "difficulty": "very-hard",
+    "lectureBlocks": [
+      { "id": "analysis-lec-mon", "type": "lecture", "title": "Analysis Lecture", "dayOfWeek": "monday", "startTime": "12:00", "endTime": "14:00", "location": "MI HS 1", "isFixed": true },
+      { "id": "analysis-lec-fri", "type": "lecture", "title": "Analysis Lecture", "dayOfWeek": "friday", "startTime": "12:00", "endTime": "14:00", "location": "MI HS 1", "isFixed": true }
+    ],
+    "uebungsklassen": [
+      { "id": "analysis-ue-tue", "dayOfWeek": "tuesday", "startTime": "16:00", "endTime": "18:00", "room": "MI 00.09.022", "spotsAvailable": 22 },
+      { "id": "analysis-ue-thu", "dayOfWeek": "thursday", "startTime": "14:00", "endTime": "16:00", "room": "MI 00.09.022", "spotsAvailable": 22 }
+    ],
+    "weeklyStudyHoursRecommended": 8,
+    "tags": ["math", "proof-based", "calculus", "first-year"]
+  },
+  {
+    "id": "in0007",
+    "name": "Grundlagen Datenbanken",
+    "shortName": "GDB",
+    "credits": 6,
+    "difficulty": "medium",
+    "lectureBlocks": [
+      { "id": "gdb-lec-wed", "type": "lecture", "title": "GDB Lecture", "dayOfWeek": "wednesday", "startTime": "16:00", "endTime": "18:00", "location": "MI HS 3", "isFixed": true }
+    ],
+    "uebungsklassen": [
+      { "id": "gdb-ue-fri", "dayOfWeek": "friday", "startTime": "14:00", "endTime": "16:00", "room": "MI 02.07.023", "spotsAvailable": 30 }
+    ],
+    "weeklyStudyHoursRecommended": 3,
+    "tags": ["databases", "sql", "relational"]
+  },
+  {
+    "id": "in0011",
+    "name": "Betriebssysteme",
+    "shortName": "BS",
+    "credits": 6,
+    "difficulty": "hard",
+    "lectureBlocks": [
+      { "id": "bs-lec-thu", "type": "lecture", "title": "BS Lecture", "dayOfWeek": "thursday", "startTime": "12:00", "endTime": "14:00", "location": "MI HS 2", "isFixed": true }
+    ],
+    "uebungsklassen": [
+      { "id": "bs-ue-mon", "dayOfWeek": "monday", "startTime": "16:00", "endTime": "18:00", "room": "MI 02.07.023", "spotsAvailable": 20 },
+      { "id": "bs-ue-wed", "dayOfWeek": "wednesday", "startTime": "08:00", "endTime": "10:00", "room": "MI 02.07.023", "spotsAvailable": 20 }
+    ],
+    "weeklyStudyHoursRecommended": 5,
+    "tags": ["systems", "c", "concurrency", "memory"]
+  }
+]
