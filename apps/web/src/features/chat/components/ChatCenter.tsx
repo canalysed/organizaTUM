@@ -35,7 +35,7 @@ export function ChatCenter({ input, setInput, onSend, refineBlock, onClearBlock,
       <div style={{ textAlign: "center", width: "100%", maxWidth: 600, animation: "fadeUp 600ms 80ms both" }}>
         <div className="serif" style={{ fontSize: 46, lineHeight: 1.12, display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
           <span style={{ color: "var(--ink)" }}>
-            {greeting}{firstName ? `, ${firstName}.` : "."}
+            {greeting}{firstName ? `, ${firstName}` : ""}!
           </span>
           <span style={{ fontStyle: "italic", color: "var(--tum)", opacity: 0.9 }}>
             Shall we plan your week?

@@ -95,7 +95,6 @@ export function AppClient() {
         blocks,
         metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
       });
-      setAppState("split");
     } catch { /* ignore malformed CSV */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally runs once on mount

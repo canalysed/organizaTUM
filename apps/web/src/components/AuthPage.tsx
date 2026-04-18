@@ -155,7 +155,7 @@ export function AuthPage() {
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ lineHeight: 1.1, display: "inline-flex", alignItems: "baseline", gap: 1 }}>
             <span className="serif" style={{ fontWeight: 400, fontStyle: "italic", color: "var(--ink-2)", fontSize: 40 }}>Organiza</span>
-            <span className="serif" style={{ fontWeight: 700, color: "var(--tum)", fontSize: 40 }}>TUM</span>
+            <span style={{ fontWeight: 700, color: "var(--tum)", fontSize: 40 }}>TUM</span>
           </div>
           <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 8 }}>
             Your AI-powered TUM scheduler
