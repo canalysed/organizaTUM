@@ -9,6 +9,7 @@ interface CalendarState {
   selectBlock: (block: TimeBlock | null) => void;
   setLoading: (loading: boolean) => void;
   updateBlock: (blockId: string, updates: Partial<Pick<TimeBlock, "dayOfWeek" | "startTime" | "endTime">>) => void;
+  clearCalendar: () => void;
 }
 
 export const useCalendarStore = create<CalendarState>((set) => ({
@@ -31,4 +32,5 @@ export const useCalendarStore = create<CalendarState>((set) => ({
         },
       };
     }),
+  clearCalendar: () => set({ calendar: null, selectedBlock: null, isLoading: false }),
 }));

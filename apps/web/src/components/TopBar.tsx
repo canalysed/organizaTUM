@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "./Icon";
 import { useUserStore } from "@/stores/user-store";
+import { useCalendarStore } from "@/stores/calendar-store";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
 
 type AppState = "landing" | "chatting" | "split";
@@ -35,6 +36,7 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
 
   const identity = useUserStore((s) => s.identity);
   const clearAll = useUserStore((s) => s.clearAll);
+  const clearCalendar = useCalendarStore((s) => s.clearCalendar);
 
   const initials = getInitials(identity?.fullName, identity?.tumEmail);
   const fullName = identity?.fullName ?? identity?.tumEmail ?? "Your account";
@@ -56,7 +58,9 @@ export function TopBar({ appState, buildProgress, onNavigate }: TopBarProps) {
     const supabase = createBrowserSupabaseClient();
     await supabase.auth.signOut();
     clearAll();
-    router.push("/login");
+    clearCalendar();
+    router.replace("/login");
+    router.refresh();
   };
 
   return (
