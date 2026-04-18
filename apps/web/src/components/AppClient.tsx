@@ -245,7 +245,18 @@ export function AppClient() {
     if (!file) return;
     if (csvInputRef.current) csvInputRef.current.value = "";
     try {
-      const text = await file.text();
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      // Detect encoding: UTF-8 BOM → UTF-8, replacement chars → Windows-1252 (TUM export default)
+      let text: string;
+      if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+        text = new TextDecoder("utf-8").decode(buffer);
+      } else {
+        const utf8 = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+        text = utf8.includes("\uFFFD")
+          ? new TextDecoder("windows-1252").decode(buffer)
+          : utf8;
+      }
       const blocks = parseTumCsv(text);
       if (!blocks.length) return;
       const now = new Date();
@@ -288,9 +299,15 @@ export function AppClient() {
     setRefineBlock(block);
   }, []);
 
+  // Daily block instances have ids like "base-d3" — strip the suffix to get the real store id
+  const resolveBlockId = (id: string) => id.replace(/-d\d+$/, "");
+
   const handleBlockMove = useCallback((blockId: string, newDay: number, newStart: number, newEnd: number) => {
-    updateBlock(blockId, {
-      dayOfWeek: DAY_NAMES[newDay],
+    const realId = resolveBlockId(blockId);
+    const isDailyInstance = realId !== blockId;
+    updateBlock(realId, {
+      // Daily blocks appear on all days — only update the time, not the day
+      ...(!isDailyInstance && { dayOfWeek: DAY_NAMES[newDay] }),
       startTime: formatT(newStart),
       endTime: formatT(newEnd),
     });
@@ -375,8 +392,8 @@ export function AppClient() {
             selectedCanteenId={selectedCanteenId}
             onCanteenChange={setSelectedCanteenId}
             onAddBlock={addBlock}
-            onUpdateBlock={(id, updates) => updateBlock(id, updates)}
-            onDeleteBlock={deleteBlock}
+            onUpdateBlock={(id, updates) => updateBlock(resolveBlockId(id), updates)}
+            onDeleteBlock={(id) => deleteBlock(resolveBlockId(id))}
           />
         </div>
 

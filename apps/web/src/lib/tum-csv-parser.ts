@@ -41,7 +41,9 @@ export function parseTumCsv(csvText: string): TimeBlock[] {
     const lines = csvText.trim().split(/\r?\n/);
     if (lines.length < 2) return [];
 
-    const headers = parseRow(lines[0]);
+    // Auto-detect delimiter: TUM exports sometimes use semicolons (European locale)
+    const delimiter = lines[0].includes(";") && !lines[0].includes(",") ? ";" : ",";
+    const headers = parseRow(lines[0], delimiter);
     const seen = new Set<string>();
     const blocks: TimeBlock[] = [];
 
@@ -49,7 +51,7 @@ export function parseTumCsv(csvText: string): TimeBlock[] {
       const line = lines[i].trim();
       if (!line) continue;
 
-      const values = parseRow(line);
+      const values = parseRow(line, delimiter);
       const row = Object.fromEntries(
         headers.map((h, idx) => [h, values[idx] ?? ""])
       ) as unknown as CsvRow;
@@ -90,7 +92,7 @@ function cleanLocation(ort: string): string {
   return ort.replace(/\s*\(\d+[\d.]+\)\s*$/, "").trim();
 }
 
-function parseRow(line: string): string[] {
+function parseRow(line: string, delimiter = ","): string[] {
   const result: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -104,7 +106,7 @@ function parseRow(line: string): string[] {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (ch === "," && !inQuotes) {
+    } else if (ch === delimiter && !inQuotes) {
       result.push(current);
       current = "";
     } else {
