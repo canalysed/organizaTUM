@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { z } from "zod";
-import { model } from "@/lib/bedrock-client";
+import { getModel } from "@/lib/bedrock-client";
 import { CourseAnalysisSchema } from "@organizaTUM/shared";
 import { analysisPrompt } from "@/prompts/analysis";
 import { lookupCourses } from "@/tools/course-lookup";
@@ -21,7 +21,7 @@ export async function analysisNode(
   );
 
   const result = await generateObject({
-    model,
+    model: getModel(),
     schema: AnalysisOutputSchema,
     messages: [
       { role: "system", content: analysisPrompt(state.userProfile, courses) },

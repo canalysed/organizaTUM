@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { z } from "zod";
-import { model } from "@/lib/bedrock-client";
+import { getModel } from "@/lib/bedrock-client";
 import { leisurePrompt } from "@/prompts/leisure";
 import { getTumEvents } from "@/tools/tum-events";
 import type { AgentState } from "../state";
@@ -24,7 +24,7 @@ export async function leisureNode(
   const events = await getTumEvents();
 
   const result = await generateObject({
-    model,
+    model: getModel(),
     schema: LeisureSuggestionsSchema,
     messages: [
       {

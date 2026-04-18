@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { model } from "@/lib/bedrock-client";
+import { getModel } from "@/lib/bedrock-client";
 import { WeeklyCalendarSchema } from "@organizaTUM/shared";
 import { refinementPrompt } from "@/prompts/refinement";
 import type { AgentState } from "../state";
@@ -10,7 +10,7 @@ export async function refinementNode(
   if (!state.calendar || !state.refinementRequest) return {};
 
   const result = await generateObject({
-    model,
+    model: getModel(),
     schema: WeeklyCalendarSchema,
     messages: [
       {

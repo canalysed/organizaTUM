@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { model } from "@/lib/bedrock-client";
+import { getModel } from "@/lib/bedrock-client";
 import { OnboardingResponseSchema } from "@organizaTUM/shared";
 import { onboardingPrompt } from "@/prompts/onboarding";
 import type { AgentState } from "../state";
@@ -8,7 +8,7 @@ export async function onboardingNode(
   state: AgentState,
 ): Promise<Partial<AgentState>> {
   const result = await generateObject({
-    model,
+    model: getModel(),
     schema: OnboardingResponseSchema,
     messages: [
       { role: "system", content: onboardingPrompt() },

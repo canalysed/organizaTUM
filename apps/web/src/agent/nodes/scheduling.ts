@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { model } from "@/lib/bedrock-client";
+import { getModel } from "@/lib/bedrock-client";
 import { WeeklyCalendarSchema } from "@organizaTUM/shared";
 import { schedulingPrompt } from "@/prompts/scheduling";
 import { getMensaMenu } from "@/tools/mensa-menu";
@@ -13,7 +13,7 @@ export async function schedulingNode(
   const mensaMenu = await getMensaMenu();
 
   const result = await generateObject({
-    model,
+    model: getModel(),
     schema: WeeklyCalendarSchema,
     messages: [
       {
