@@ -284,8 +284,6 @@ export async function getIdentity(sessionId: string): Promise<UserIdentity | nul
     sessionId: data.session_id,
     fullName: data.full_name ?? undefined,
     tumEmail: data.tum_email ?? undefined,
-    matriculationNumber: data.matriculation_number ?? undefined,
-    degreeProgram: data.degree_program ?? undefined,
     faculty: data.faculty ?? undefined,
     currentSemester: data.current_semester ?? undefined,
   });
@@ -301,8 +299,6 @@ export async function saveIdentity(
       session_id: sessionId,
       full_name: identity.fullName ?? null,
       tum_email: identity.tumEmail ?? null,
-      matriculation_number: identity.matriculationNumber ?? null,
-      degree_program: identity.degreeProgram ?? null,
       faculty: identity.faculty ?? null,
       current_semester: identity.currentSemester ?? null,
       updated_at: new Date().toISOString(),

@@ -44,8 +44,6 @@ export function ProfilePage({ onClose }: ProfilePageProps) {
   const [identityDraft, setIdentityDraft] = useState<Omit<UserIdentity, "sessionId">>({
     fullName: identity?.fullName ?? "",
     tumEmail: identity?.tumEmail ?? "",
-    matriculationNumber: identity?.matriculationNumber ?? "",
-    degreeProgram: identity?.degreeProgram ?? "",
     faculty: identity?.faculty ?? "",
     currentSemester: identity?.currentSemester ?? undefined,
   });
@@ -221,24 +219,8 @@ export function ProfilePage({ onClose }: ProfilePageProps) {
                   placeholder="e.g. jonas.w@tum.de"
                 />
               </Field>
-              <Field label="Matriculation number">
-                <input
-                  style={inputStyle}
-                  value={identityDraft.matriculationNumber ?? ""}
-                  onChange={(e) => setIdentityDraft((d) => ({ ...d, matriculationNumber: e.target.value }))}
-                  placeholder="e.g. 03781234"
-                />
-              </Field>
             </ProfileSection>
             <ProfileSection label="Program">
-              <Field label="Degree program">
-                <input
-                  style={inputStyle}
-                  value={identityDraft.degreeProgram ?? ""}
-                  onChange={(e) => setIdentityDraft((d) => ({ ...d, degreeProgram: e.target.value }))}
-                  placeholder="e.g. B.Sc. Informatics"
-                />
-              </Field>
               <Field label="Faculty">
                 <input
                   style={inputStyle}

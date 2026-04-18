@@ -128,8 +128,6 @@ export const UserIdentitySchema = z.object({
   sessionId: z.string(),
   fullName: z.string().optional(),
   tumEmail: z.string().email().optional(),
-  matriculationNumber: z.string().optional(),
-  degreeProgram: z.string().optional(),
   faculty: z.string().optional(),
   currentSemester: z.number().int().min(1).max(20).optional(),
 });
