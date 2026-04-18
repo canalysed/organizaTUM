@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
 
 type AuthTab = "signin" | "signup";
-type SignupStep = 1 | 2;
+type SignupStep = 1 | 2 | 3;
 type SlideDir = "none" | "exit-left" | "enter-right" | "exit-right" | "enter-left";
-
-const STUDY_STYLES = ["Visual", "Reading/Writing", "Hands-on", "Mixed"];
 
 const SLIDE_ANIM: Record<SlideDir, string | undefined> = {
   "none":        undefined,
@@ -30,10 +28,16 @@ export function AuthPage() {
   const [password, setPassword] = useState("");
 
   // Step 2
-  const [studyStyle, setStudyStyle] = useState("");
   const [program, setProgram] = useState("");
   const [semester, setSemester] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
+
+  // Step 3
+  const [learningStyle, setLearningStyle] = useState<"spaced-repetition" | "deep-session">("spaced-repetition");
+  const [wakeUpTime, setWakeUpTime] = useState("08:00");
+  const [sleepTime, setSleepTime] = useState("23:00");
+  const [studyTiming, setStudyTiming] = useState<"morning" | "afternoon" | "evening">("afternoon");
+  const [weekendPref, setWeekendPref] = useState<"free" | "light" | "full">("light");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +72,24 @@ export function AuthPage() {
     setSlideDir("exit-right");
     setTimeout(() => {
       setSignupStep(1);
+      setSlideDir("enter-left");
+    }, 290);
+  };
+
+  const goToStep3 = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSlideDir("exit-left");
+    setTimeout(() => {
+      setSignupStep(3);
+      setSlideDir("enter-right");
+    }, 290);
+  };
+
+  const goBackToStep2 = () => {
+    setSlideDir("exit-right");
+    setTimeout(() => {
+      setSignupStep(2);
       setSlideDir("enter-left");
     }, 290);
   };
@@ -121,17 +143,39 @@ export function AuthPage() {
       }
       const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
       if (!signInErr && signInData.user) {
-        await fetch("/api/user/identity", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: signInData.user.id,
-            fullName: fullName || undefined,
-            tumEmail: email || undefined,
-            faculty: program || undefined,
-            currentSemester: semester ? parseInt(semester, 10) : undefined,
+        const userId = signInData.user.id;
+        await Promise.all([
+          fetch("/api/user/identity", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: userId,
+              fullName: fullName || undefined,
+              tumEmail: email || undefined,
+              faculty: program || undefined,
+              currentSemester: semester ? parseInt(semester, 10) : undefined,
+            }),
           }),
-        });
+          fetch("/api/user/profile", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: userId,
+              name: fullName,
+              courses: [],
+              learningStyle,
+              fixedCommitments: [],
+              mensaPreferences: {},
+              leisureInterests: [],
+              studyStrengths: [],
+              studyWeaknesses: [],
+              wakeUpTime,
+              sleepTime,
+              preferredStudyTime: studyTiming,
+              weekendPreference: weekendPref,
+            }),
+          }),
+        ]);
         router.push("/");
         router.refresh();
       }
@@ -150,7 +194,7 @@ export function AuthPage() {
       justifyContent: "center",
       padding: "40px 20px",
     }}>
-      <div style={{ width: "100%", maxWidth: 420 }}>
+      <div style={{ width: "100%", maxWidth: 440 }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ lineHeight: 1.1, display: "inline-flex", alignItems: "baseline", gap: 1 }}>
@@ -215,7 +259,7 @@ export function AuthPage() {
             {/* ── Sign up step 1 ── */}
             {tab === "signup" && signupStep === 1 && (
               <form onSubmit={goToStep2} style={{ display: "flex", flexDirection: "column", gap: 16, animation: anim }}>
-                <StepIndicator step={1} />
+                <StepIndicator step={1} total={3} />
                 <Field label="Full name">
                   <input type="text" required value={fullName} onChange={(e) => setFullName(e.target.value)}
                     placeholder="Anna Müller" style={inputStyle} autoComplete="name" />
@@ -235,8 +279,8 @@ export function AuthPage() {
 
             {/* ── Sign up step 2 ── */}
             {tab === "signup" && signupStep === 2 && (
-              <form onSubmit={handleSignUp} style={{ display: "flex", flexDirection: "column", gap: 16, animation: anim }}>
-                <StepIndicator step={2} />
+              <form onSubmit={goToStep3} style={{ display: "flex", flexDirection: "column", gap: 16, animation: anim }}>
+                <StepIndicator step={2} total={3} />
 
                 <Field label="What are you studying?">
                   <input type="text" required value={program} onChange={(e) => setProgram(e.target.value)}
@@ -247,14 +291,6 @@ export function AuthPage() {
                   <input type="number" required min={1} max={20} value={semester}
                     onChange={(e) => setSemester(e.target.value)}
                     placeholder="e.g. 3" style={inputStyle} />
-                </Field>
-
-                <Field label="Learning style">
-                  <select required value={studyStyle} onChange={(e) => setStudyStyle(e.target.value)}
-                    style={{ ...inputStyle, appearance: "none" }}>
-                    <option value="">Select your style…</option>
-                    {STUDY_STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
                 </Field>
 
                 <Field label="TUM Online schedule (CSV)">
@@ -283,12 +319,115 @@ export function AuthPage() {
                   </p>
                 </Field>
 
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={goBackToStep1}
+                    style={{
+                      flex: "0 0 auto",
+                      padding: "11px 14px",
+                      fontSize: 14,
+                      color: "var(--ink-3)",
+                      border: "1px solid var(--line)",
+                      borderRadius: 8,
+                      background: "transparent",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ←
+                  </button>
+                  <SubmitBtn loading={false} flex>Continue</SubmitBtn>
+                </div>
+              </form>
+            )}
+
+            {/* ── Sign up step 3 ── */}
+            {tab === "signup" && signupStep === 3 && (
+              <form onSubmit={handleSignUp} style={{ display: "flex", flexDirection: "column", gap: 20, animation: anim }}>
+                <StepIndicator step={3} total={3} />
+
+                <Field label="Learning style">
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <OptionCard
+                      selected={learningStyle === "spaced-repetition"}
+                      onClick={() => setLearningStyle("spaced-repetition")}
+                      title="Spaced repetition"
+                      description="Short sessions spread across multiple days."
+                    />
+                    <OptionCard
+                      selected={learningStyle === "deep-session"}
+                      onClick={() => setLearningStyle("deep-session")}
+                      title="Deep sessions"
+                      description="Longer blocks, fewer days per week."
+                    />
+                  </div>
+                </Field>
+
+                <Field label="Daily window">
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Wake-up time</span>
+                      <input
+                        type="time"
+                        value={wakeUpTime}
+                        onChange={(e) => setWakeUpTime(e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Sleep time</span>
+                      <input
+                        type="time"
+                        value={sleepTime}
+                        onChange={(e) => setSleepTime(e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                </Field>
+
+                <Field label="Study timing">
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                    {(["morning", "afternoon", "evening"] as const).map((t) => (
+                      <OptionCard
+                        key={t}
+                        selected={studyTiming === t}
+                        onClick={() => setStudyTiming(t)}
+                        title={t.charAt(0).toUpperCase() + t.slice(1)}
+                      />
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="Weekend preference">
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                    <OptionCard
+                      selected={weekendPref === "free"}
+                      onClick={() => setWeekendPref("free")}
+                      title="Free"
+                      description="No studying on weekends."
+                    />
+                    <OptionCard
+                      selected={weekendPref === "light"}
+                      onClick={() => setWeekendPref("light")}
+                      title="Light"
+                      description="Max 2 hours per day."
+                    />
+                    <OptionCard
+                      selected={weekendPref === "full"}
+                      onClick={() => setWeekendPref("full")}
+                      title="Full"
+                      description="Treat weekends like weekdays."
+                    />
+                  </div>
+                </Field>
+
                 <Feedback error={error} success={success} />
 
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     type="button"
-                    onClick={goBackToStep1}
+                    onClick={goBackToStep2}
                     style={{
                       flex: "0 0 auto",
                       padding: "11px 14px",
@@ -330,16 +469,18 @@ export function AuthPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <label style={{ fontSize: 12, color: "var(--ink-3)" }}>{label}</label>
+      <label style={{ fontSize: 12, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {label}
+      </label>
       {children}
     </div>
   );
 }
 
-function StepIndicator({ step }: { step: 1 | 2 }) {
+function StepIndicator({ step, total }: { step: number; total: number }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-      {[1, 2].map((s) => (
+      {Array.from({ length: total }, (_, i) => i + 1).map((s) => (
         <div key={s} style={{
           height: 3, flex: 1, borderRadius: 999,
           background: s <= step ? "var(--tum)" : "var(--line)",
@@ -347,6 +488,43 @@ function StepIndicator({ step }: { step: 1 | 2 }) {
         }} />
       ))}
     </div>
+  );
+}
+
+function OptionCard({
+  selected,
+  onClick,
+  title,
+  description,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: "10px 12px",
+        color: "var(--ink)",
+        background: "var(--bg-raised)",
+        border: selected ? "2px solid var(--ink)" : "1px solid var(--line)",
+        borderRadius: 8,
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "border-color 120ms ease",
+        fontFamily: "inherit",
+      }}
+    >
+      <div style={{ fontWeight: selected ? 600 : 500, fontSize: 13 }}>{title}</div>
+      {description && (
+        <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 3, fontWeight: 400, lineHeight: 1.35 }}>
+          {description}
+        </div>
+      )}
+    </button>
   );
 }
 
