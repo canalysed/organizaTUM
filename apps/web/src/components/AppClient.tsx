@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useChat, type Message } from "@ai-sdk/react";
 import { WeeklyCalendarSchema, UserNoteSchema, UserIdentitySchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
@@ -62,6 +62,10 @@ export function AppClient() {
     api: "/api/chat",
     initialMessages,
   });
+
+  const [messageThinking, setMessageThinking] = useState<Record<string, string[]>>({});
+  const thinkingBatchStartRef = useRef<number>(0);
+  const wasLoadingRef = useRef<boolean>(false);
 
   // On mount: resolve sessionId from auth; redirect to /login if no session
   useEffect(() => {
@@ -151,6 +155,36 @@ export function AppClient() {
       })
       .catch(() => {});
   }, [sessionId, setNotes, setCalendar, setIdentity]);
+
+  // Associate thinking steps from the data stream with the assistant message they belong to
+  useEffect(() => {
+    if (isLoading && !wasLoadingRef.current) {
+      thinkingBatchStartRef.current = data?.length ?? 0;
+    }
+    if (!isLoading && wasLoadingRef.current) {
+      const events = (data ?? []) as Array<{ type: string; payload: unknown }>;
+      const steps = events
+        .slice(thinkingBatchStartRef.current)
+        .filter((e) => e.type === "thinking")
+        .map((e) => e.payload as string);
+      if (steps.length > 0) {
+        const lastAsstMsg = [...messages].reverse().find((m) => m.role === "assistant");
+        if (lastAsstMsg) {
+          setMessageThinking((prev) => ({ ...prev, [lastAsstMsg.id]: steps }));
+        }
+      }
+    }
+    wasLoadingRef.current = isLoading;
+  }, [isLoading, data, messages]);
+
+  const liveThinkingSteps = useMemo((): string[] => {
+    if (!isLoading || !data?.length) return [];
+    const events = data as Array<{ type: string; payload: unknown }>;
+    return events
+      .slice(thinkingBatchStartRef.current)
+      .filter((e) => e.type === "thinking")
+      .map((e) => e.payload as string);
+  }, [isLoading, data]);
 
   // Process agent events (phases, calendar, sessionId)
   useEffect(() => {
@@ -303,6 +337,8 @@ export function AppClient() {
             agentStatus={agentStatus}
             refineBlock={refineBlock}
             onClearBlock={() => setRefineBlock(null)}
+            messageThinking={messageThinking}
+            liveThinkingSteps={liveThinkingSteps}
           />
         </div>
 

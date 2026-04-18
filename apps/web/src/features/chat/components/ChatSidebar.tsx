@@ -15,12 +15,15 @@ interface ChatSidebarProps {
   agentStatus: string | null;
   refineBlock?: TimeBlock | null;
   onClearBlock?: () => void;
+  messageThinking?: Record<string, string[]>;
+  liveThinkingSteps?: string[];
 }
 
 export function ChatSidebar({
   messages, input, setInput, onSend, isTyping,
   onAction, agentStatus,
   refineBlock, onClearBlock,
+  messageThinking = {}, liveThinkingSteps = [],
 }: ChatSidebarProps) {
   const msgRef = useRef<HTMLDivElement>(null);
 
