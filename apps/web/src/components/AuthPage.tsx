@@ -21,6 +21,12 @@ export function AuthPage() {
     setSuccess(null);
     setLoading(true);
 
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      setError("Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL in your .env.local.");
+      setLoading(false);
+      return;
+    }
+
     const supabase = createBrowserSupabaseClient();
 
     if (tab === "signin") {

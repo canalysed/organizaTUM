@@ -12,7 +12,7 @@ import {
   type NoteCategory,
   type UserIdentity,
 } from "@organizaTUM/shared";
-import { supabaseAdmin } from "./supabase";
+import { supabaseAdmin } from "./supabase-admin";
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
 

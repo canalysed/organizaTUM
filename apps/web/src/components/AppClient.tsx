@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useChat, type Message } from "@ai-sdk/react";
 import { WeeklyCalendarSchema, UserNoteSchema, UserIdentitySchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
@@ -21,6 +22,7 @@ type Density = "compact" | "roomy";
 type BlockStyleType = "muted" | "mono" | "accent";
 
 export function AppClient() {
+  const router = useRouter();
   const [view, setView] = useState<View>("app");
   const [appState, setAppState] = useState<AppState>("landing");
   const [input, setInput] = useState("");
@@ -50,13 +52,18 @@ export function AppClient() {
     initialMessages,
   });
 
-  // On mount: resolve sessionId from auth, then hydrate data
+  // On mount: resolve sessionId from auth; redirect to /login if no session
   useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
     const supabase = createBrowserSupabaseClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setSessionId(user.id);
+      if (user) {
+        setSessionId(user.id);
+      } else {
+        router.replace("/login");
+      }
     });
-  }, [setSessionId]);
+  }, [router, setSessionId]);
 
   // Hydrate profile, notes, identity, calendar when sessionId is available
   useEffect(() => {
