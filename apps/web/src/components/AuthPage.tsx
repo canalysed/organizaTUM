@@ -1,78 +1,136 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
 
 type AuthTab = "signin" | "signup";
+type SignupStep = 1 | 2;
+type SlideDir = "none" | "exit-left" | "enter-right" | "exit-right" | "enter-left";
 
 const STUDY_STYLES = ["Visual", "Reading/Writing", "Hands-on", "Mixed"];
 const DIET_OPTIONS = ["No preference", "Vegetarian", "Vegan", "Halal", "Kosher", "Other"];
 
+const SLIDE_ANIM: Record<SlideDir, string | undefined> = {
+  "none":        undefined,
+  "exit-left":   "slideOutLeft 280ms ease forwards",
+  "enter-right": "slideInRight 280ms cubic-bezier(0.16,1,0.3,1) both",
+  "exit-right":  "slideOutRight 280ms ease forwards",
+  "enter-left":  "slideInLeft 280ms cubic-bezier(0.16,1,0.3,1) both",
+};
+
 export function AuthPage() {
   const router = useRouter();
   const [tab, setTab] = useState<AuthTab>("signin");
+  const [signupStep, setSignupStep] = useState<SignupStep>(1);
+  const [slideDir, setSlideDir] = useState<SlideDir>("none");
+
+  // Step 1
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [age, setAge] = useState("");
-  const [semester, setSemester] = useState("");
+
+  // Step 2
   const [studyStyle, setStudyStyle] = useState("");
   const [diet, setDiet] = useState("");
+  const [program, setProgram] = useState("");
+  const [semester, setSemester] = useState("");
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const csvRef = useRef<HTMLInputElement>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const switchTab = (t: AuthTab) => {
+    setTab(t);
+    setSignupStep(1);
+    setSlideDir("none");
+    setError(null);
+    setSuccess(null);
+  };
+
+  const goToStep2 = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSlideDir("exit-left");
+    setTimeout(() => {
+      setSignupStep(2);
+      setSlideDir("enter-right");
+    }, 290);
+  };
+
+  const goBackToStep1 = () => {
+    setSlideDir("exit-right");
+    setTimeout(() => {
+      setSignupStep(1);
+      setSlideDir("enter-left");
+    }, 290);
+  };
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      setError("Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL in .env.local.");
+      setLoading(false);
+      return;
+    }
+
+    const supabase = createBrowserSupabaseClient();
+    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+    if (err) {
+      setError(err.message);
+    } else {
+      router.push("/");
+      router.refresh();
+    }
+    setLoading(false);
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
     setLoading(true);
 
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      setError("Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL in your .env.local.");
+      setError("Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL in .env.local.");
       setLoading(false);
       return;
     }
 
     const supabase = createBrowserSupabaseClient();
+    const { error: err } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          semester: semester ? parseInt(semester, 10) : null,
+          study_style: studyStyle || null,
+          diet: diet || null,
+          program: program || null,
+        },
+      },
+    });
 
-    if (tab === "signin") {
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-      if (err) {
-        setError(err.message);
-      } else {
+    if (err) {
+      setError(err.message);
+    } else {
+      setSuccess("Account created. Signing you in…");
+      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+      if (!signInErr) {
         router.push("/");
         router.refresh();
       }
-    } else {
-      const { error: err } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            age: age ? parseInt(age, 10) : null,
-            semester: semester ? parseInt(semester, 10) : null,
-            study_style: studyStyle || null,
-            diet: diet || null,
-          },
-        },
-      });
-      if (err) {
-        setError(err.message);
-      } else {
-        setSuccess("Account created. Signing you in…");
-        const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-        if (!signInErr) {
-          router.push("/");
-          router.refresh();
-        }
-      }
     }
-
     setLoading(false);
   };
+
+  const anim = SLIDE_ANIM[slideDir];
 
   return (
     <div style={{
@@ -84,10 +142,10 @@ export function AuthPage() {
       padding: "40px 20px",
     }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
-        {/* Logo / Brand */}
+        {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ lineHeight: 1.1, display: "inline-flex", alignItems: "baseline", gap: 1 }}>
-            <span style={{ fontWeight: 400, color: "var(--ink-2)", fontSize: 32 }}>Organiza</span>
+            <span className="serif" style={{ fontWeight: 400, color: "var(--ink-2)", fontSize: 32 }}>Organiza</span>
             <span style={{ fontWeight: 700, color: "var(--tum)", fontSize: 42 }}>TUM</span>
           </div>
           <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 8 }}>
@@ -101,10 +159,11 @@ export function AuthPage() {
           border: "1px solid var(--line)",
           borderRadius: 14,
           padding: "32px 32px 28px",
+          overflow: "hidden",
         }}>
           {/* Tabs */}
           <div style={{ display: "flex", gap: 4, marginBottom: 28, borderBottom: "1px solid var(--line)" }}>
-            {([["signin", "Sign in"], ["signup", "Sign up"]] as [AuthTab, string][]).map(([t, label]) => (
+            {(["signin", "signup"] as AuthTab[]).map((t) => (
               <button
                 key={t}
                 style={{
@@ -113,161 +172,213 @@ export function AuthPage() {
                   color: tab === t ? "var(--ink)" : "var(--ink-3)",
                   borderBottom: tab === t ? "2px solid var(--tum)" : "2px solid transparent",
                   marginBottom: -1,
-                  fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
+                  fontWeight: tab === t ? 500 : 400,
                 }}
-                onClick={() => { setTab(t); setError(null); setSuccess(null); }}
+                onClick={() => switchTab(t)}
               >
-                {label}
+                {t === "signin" ? "Sign in" : "Sign up"}
               </button>
             ))}
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {tab === "signup" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 12, color: "var(--ink-3)" }}>Full name</label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Anna Müller"
-                  style={inputStyle}
-                  autoComplete="name"
-                />
-              </div>
+          <div style={{ position: "relative", overflow: "hidden" }}>
+            {/* ── Sign in ── */}
+            {tab === "signin" && (
+              <form onSubmit={handleSignIn} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <Field label="Email">
+                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@tum.de" style={inputStyle} autoComplete="email" />
+                </Field>
+                <Field label="Password">
+                  <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••" style={inputStyle} autoComplete="current-password" />
+                </Field>
+                <Feedback error={error} success={success} />
+                <SubmitBtn loading={loading}>Sign in</SubmitBtn>
+              </form>
             )}
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, color: "var(--ink-3)" }}>Email</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@tum.de"
-                style={inputStyle}
-                autoComplete="email"
-              />
-            </div>
+            {/* ── Sign up step 1 ── */}
+            {tab === "signup" && signupStep === 1 && (
+              <form onSubmit={goToStep2} style={{ display: "flex", flexDirection: "column", gap: 16, animation: anim }}>
+                <StepIndicator step={1} />
+                <Field label="Full name">
+                  <input type="text" required value={fullName} onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Anna Müller" style={inputStyle} autoComplete="name" />
+                </Field>
+                <Field label="Email">
+                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@tum.de" style={inputStyle} autoComplete="email" />
+                </Field>
+                <Field label="Password">
+                  <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Minimum 6 characters" style={inputStyle} autoComplete="new-password" />
+                </Field>
+                <Feedback error={error} success={null} />
+                <SubmitBtn loading={false}>Continue</SubmitBtn>
+              </form>
+            )}
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, color: "var(--ink-3)" }}>Password</label>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={tab === "signup" ? "Minimum 6 characters" : "••••••••"}
-                style={inputStyle}
-                autoComplete={tab === "signin" ? "current-password" : "new-password"}
-              />
-            </div>
+            {/* ── Sign up step 2 ── */}
+            {tab === "signup" && signupStep === 2 && (
+              <form onSubmit={handleSignUp} style={{ display: "flex", flexDirection: "column", gap: 16, animation: anim }}>
+                <StepIndicator step={2} />
 
-            {tab === "signup" && (
-              <>
-                <div style={{ height: 1, background: "var(--line-soft)", margin: "4px 0" }}/>
-                <div style={{ fontSize: 11, color: "var(--ink-4)", fontFamily: "var(--font-mono, monospace)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                  Help us build your perfect schedule
-                </div>
+                <Field label="What are you studying?">
+                  <input type="text" required value={program} onChange={(e) => setProgram(e.target.value)}
+                    placeholder="e.g. Informatics, Electrical Engineering…" style={inputStyle} />
+                </Field>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <label style={{ fontSize: 12, color: "var(--ink-3)" }}>Age</label>
-                    <input
-                      type="number"
-                      min={16}
-                      max={99}
-                      value={age}
-                      onChange={(e) => setAge(e.target.value)}
-                      placeholder="22"
-                      style={inputStyle}
-                    />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <label style={{ fontSize: 12, color: "var(--ink-3)" }}>Semester</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={semester}
-                      onChange={(e) => setSemester(e.target.value)}
-                      placeholder="3"
-                      style={inputStyle}
-                    />
-                  </div>
-                </div>
+                <Field label="Current semester">
+                  <input type="number" required min={1} max={20} value={semester}
+                    onChange={(e) => setSemester(e.target.value)}
+                    placeholder="e.g. 3" style={inputStyle} />
+                </Field>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <label style={{ fontSize: 12, color: "var(--ink-3)" }}>Learning style</label>
-                  <select
-                    value={studyStyle}
-                    onChange={(e) => setStudyStyle(e.target.value)}
-                    style={{ ...inputStyle, appearance: "none" }}
-                  >
+                <Field label="Learning style">
+                  <select required value={studyStyle} onChange={(e) => setStudyStyle(e.target.value)}
+                    style={{ ...inputStyle, appearance: "none" }}>
                     <option value="">Select your style…</option>
                     {STUDY_STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
-                </div>
+                </Field>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <label style={{ fontSize: 12, color: "var(--ink-3)" }}>Dietary preference</label>
-                  <select
-                    value={diet}
-                    onChange={(e) => setDiet(e.target.value)}
-                    style={{ ...inputStyle, appearance: "none" }}
-                  >
+                <Field label="Dietary preference">
+                  <select required value={diet} onChange={(e) => setDiet(e.target.value)}
+                    style={{ ...inputStyle, appearance: "none" }}>
                     <option value="">Select preference…</option>
                     {DIET_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
                   </select>
+                </Field>
+
+                <Field label="TUM Online schedule (CSV)">
+                  <input ref={csvRef} type="file" accept=".csv" style={{ display: "none" }}
+                    onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)} />
+                  <button
+                    type="button"
+                    onClick={() => csvRef.current?.click()}
+                    style={{
+                      ...inputStyle,
+                      display: "flex", alignItems: "center", gap: 8,
+                      color: csvFile ? "var(--ink)" : "var(--ink-3)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    {csvFile ? csvFile.name : "Upload CSV from TUM Online…"}
+                  </button>
+                  <p style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 4 }}>
+                    Export from TUM Online → My Courses → Export CSV
+                  </p>
+                </Field>
+
+                <Feedback error={error} success={success} />
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={goBackToStep1}
+                    style={{
+                      flex: "0 0 auto",
+                      padding: "11px 14px",
+                      fontSize: 14,
+                      color: "var(--ink-3)",
+                      border: "1px solid var(--line)",
+                      borderRadius: 8,
+                      background: "transparent",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ←
+                  </button>
+                  <SubmitBtn loading={loading} flex>Create account</SubmitBtn>
                 </div>
-              </>
+              </form>
             )}
-
-            {error && (
-              <p style={{ fontSize: 12, color: "oklch(50% 0.15 25)", background: "oklch(97% 0.03 25)", border: "1px solid oklch(85% 0.08 25)", borderRadius: 6, padding: "8px 12px" }}>
-                {error}
-              </p>
-            )}
-
-            {success && (
-              <p style={{ fontSize: 12, color: "oklch(45% 0.1 150)", background: "oklch(97% 0.02 150)", border: "1px solid oklch(85% 0.06 150)", borderRadius: 6, padding: "8px 12px" }}>
-                {success}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                marginTop: 4,
-                padding: "11px 16px",
-                fontSize: 14,
-                background: loading ? "var(--tum-line)" : "var(--tum)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                cursor: loading ? "default" : "pointer",
-                transition: "background 140ms ease",
-              }}
-            >
-              {loading ? "Please wait…" : tab === "signin" ? "Sign in" : "Create account"}
-            </button>
-          </form>
+          </div>
         </div>
 
         <p style={{ textAlign: "center", fontSize: 12, color: "var(--ink-3)", marginTop: 20 }}>
           {tab === "signin" ? (
-            <>No account? <button style={{ color: "var(--tum)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 12 }} onClick={() => setTab("signup")}>Sign up</button></>
+            <>No account?{" "}
+              <button style={{ color: "var(--tum)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 12 }}
+                onClick={() => switchTab("signup")}>Sign up</button>
+            </>
           ) : (
-            <>Already have an account? <button style={{ color: "var(--tum)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 12 }} onClick={() => setTab("signin")}>Sign in</button></>
+            <>Already have an account?{" "}
+              <button style={{ color: "var(--tum)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 12 }}
+                onClick={() => switchTab("signin")}>Sign in</button>
+            </>
           )}
         </p>
       </div>
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <label style={{ fontSize: 12, color: "var(--ink-3)" }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function StepIndicator({ step }: { step: 1 | 2 }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+      {[1, 2].map((s) => (
+        <div key={s} style={{
+          height: 3, flex: 1, borderRadius: 999,
+          background: s <= step ? "var(--tum)" : "var(--line)",
+          transition: "background 200ms ease",
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function Feedback({ error, success }: { error: string | null; success: string | null }) {
+  if (error) return (
+    <p style={{ fontSize: 12, color: "oklch(50% 0.15 25)", background: "oklch(97% 0.03 25)", border: "1px solid oklch(85% 0.08 25)", borderRadius: 6, padding: "8px 12px" }}>
+      {error}
+    </p>
+  );
+  if (success) return (
+    <p style={{ fontSize: 12, color: "oklch(45% 0.1 150)", background: "oklch(97% 0.02 150)", border: "1px solid oklch(85% 0.06 150)", borderRadius: 6, padding: "8px 12px" }}>
+      {success}
+    </p>
+  );
+  return null;
+}
+
+function SubmitBtn({ loading, children, flex }: { loading: boolean; children: React.ReactNode; flex?: boolean }) {
+  return (
+    <button
+      type="submit"
+      disabled={loading}
+      style={{
+        flex: flex ? 1 : undefined,
+        marginTop: 4,
+        padding: "11px 16px",
+        fontSize: 14,
+        background: loading ? "var(--tum-line)" : "var(--tum)",
+        color: "#fff",
+        border: "none",
+        borderRadius: 8,
+        cursor: loading ? "default" : "pointer",
+        transition: "background 140ms ease",
+        fontWeight: 500,
+      }}
+    >
+      {loading ? "Please wait…" : children}
+    </button>
   );
 }
 
