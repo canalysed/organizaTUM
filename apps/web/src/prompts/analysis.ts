@@ -15,7 +15,7 @@ For each course the student is taking:
 3. Assign weekly study hours proportional to adjusted difficulty (easy: 2h, medium: 4h, hard: 6h, very-hard: 8h)
 4. Assign a priority score (1–10) based on credits and difficulty
 
-Provide a brief summary of your analysis in plain text.
+Provide a brief summary of your analysis in plain text. Do not use em dashes (—).
 
 Respond ONLY in valid JSON matching the provided schema. No markdown, no preamble, no explanation outside the JSON.`;
 }

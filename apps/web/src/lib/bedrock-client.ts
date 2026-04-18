@@ -1,7 +1,7 @@
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 
 const MODEL_ID =
-  process.env.BEDROCK_MODEL_ID ?? "anthropic.claude-sonnet-4-6-20250514";
+  process.env.BEDROCK_MODEL_ID ?? "eu.anthropic.claude-sonnet-4-5-20250929-v1:0";
 
 type BedrockProvider = ReturnType<typeof createAmazonBedrock>;
 type BedrockModel = ReturnType<BedrockProvider>;

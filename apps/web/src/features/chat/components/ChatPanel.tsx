@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { WeeklyCalendarSchema, type AgentPhase } from "@organizaTUM/shared";
 import { MessageBubble } from "./MessageBubble";
-import { StatusIndicator } from "./StatusIndicator";
+import { StatusIndicator, type ProcessStep } from "./StatusIndicator";
 import { ChatInput } from "./ChatInput";
 import { useUserStore } from "@/stores/user-store";
 import { useCalendarStore } from "@/stores/calendar-store";
 
 export function ChatPanel() {
-  const agentPhase = useUserStore((s) => s.agentPhase);
   const setAgentPhase = useUserStore((s) => s.setAgentPhase);
   const setCalendar = useCalendarStore((s) => s.setCalendar);
   const setCalendarLoading = useCalendarStore((s) => s.setLoading);
@@ -18,14 +17,22 @@ export function ChatPanel() {
   const { messages, data, input, handleInputChange, handleSubmit, isLoading } =
     useChat({ api: "/api/chat" });
 
-  // Drive calendar panel from structured data events the agent emits
+  const [steps, setSteps] = useState<ProcessStep[]>([]);
+
   useEffect(() => {
     if (!data?.length) return;
+    const events = data as Array<{ type: string; payload: unknown }>;
+    const thinkingEvents = events.filter((e) => e.type === "thinking");
+    setSteps(
+      thinkingEvents.map((e, i) => ({
+        label: e.payload as string,
+        status: i < thinkingEvents.length - 1 || !isLoading ? "done" : "running",
+      })),
+    );
     for (const item of data) {
       const event = item as { type: string; payload: unknown };
       if (event.type === "phase") {
         setAgentPhase(event.payload as AgentPhase);
-        // Show loading spinner in calendar panel while scheduling is in progress
         setCalendarLoading(event.payload === "scheduling" || event.payload === "analysis");
       }
       if (event.type === "calendar") {
@@ -36,7 +43,15 @@ export function ChatPanel() {
         }
       }
     }
-  }, [data, setAgentPhase, setCalendar, setCalendarLoading]);
+  }, [data, isLoading, setAgentPhase, setCalendar, setCalendarLoading]);
+
+  const wrappedSubmit = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      setSteps([]);
+      handleSubmit(e);
+    },
+    [handleSubmit],
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -45,7 +60,7 @@ export function ChatPanel() {
         <span className="text-sm font-medium text-gray-700">OrganizaTUM</span>
       </div>
 
-      <StatusIndicator phase={agentPhase} isLoading={isLoading} />
+      <StatusIndicator steps={steps} isLoading={isLoading} />
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.map((m) => (
@@ -56,7 +71,7 @@ export function ChatPanel() {
       <ChatInput
         input={input}
         onInputChange={handleInputChange}
-        onSubmit={handleSubmit}
+        onSubmit={wrappedSubmit}
         isLoading={isLoading}
       />
     </div>

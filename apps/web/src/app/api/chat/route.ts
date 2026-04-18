@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { ChatRequestSchema } from "@organizaTUM/shared";
-import { runGraph } from "@/agent/graph";
+import { runGraph, type AgentStreamEvent } from "@/agent/graph";
 import {
   ensureSession,
   getProfile,
@@ -46,10 +46,17 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const enqueue = (s: string) => controller.enqueue(encoder.encode(s));
 
+      const onEvent = (event: AgentStreamEvent) => {
+        if (event.type === "chunk") {
+          enqueue(`0:${JSON.stringify(event.payload)}\n`);
+        } else {
+          // thinking events go through the data channel so the UI can display them
+          enqueue(`2:${JSON.stringify([event])}\n`);
+        }
+      };
+
       try {
-        const result = await runGraph(requestWithContext, (chunk) => {
-          enqueue(`0:${JSON.stringify(chunk)}\n`);
-        });
+        const result = await runGraph(requestWithContext, onEvent);
 
         if (result.userProfile) {
           await saveProfile(sessionId, result.userProfile);
@@ -61,9 +68,13 @@ export async function POST(req: NextRequest) {
           await saveCourseAnalysis(sessionId, result.courseAnalysis);
         }
 
-        // Save only new messages from this turn
         const newMessages = messages.slice(-(messages.length));
         void saveMessages(sessionId, newMessages).catch(() => {});
+
+        // Emit the agent's last reply as the visible chat message
+        if (result.lastMessage) {
+          enqueue(`0:${JSON.stringify(result.lastMessage)}\n`);
+        }
 
         enqueue(`2:${JSON.stringify([{ type: "sessionId", payload: sessionId }])}\n`);
         enqueue(`2:${JSON.stringify([{ type: "phase", payload: result.currentPhase }])}\n`);
@@ -72,7 +83,9 @@ export async function POST(req: NextRequest) {
           enqueue(`2:${JSON.stringify([{ type: "calendar", payload: result.calendar }])}\n`);
         }
 
-        enqueue(`d:${JSON.stringify({ finishReason: "stop", usage: { promptTokens: 0, completionTokens: 0 } })}\n`);
+        enqueue(
+          `d:${JSON.stringify({ finishReason: "stop", usage: { promptTokens: 0, completionTokens: 0 } })}\n`,
+        );
 
         const source = result.currentPhase === "refinement" ? "refinement" : "onboarding";
         void extractAndSaveNotes(sessionId, messages, source).catch((err) =>
@@ -81,7 +94,9 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.error("[chat] agent error:", err);
         enqueue(`0:${JSON.stringify("Sorry, something went wrong. Please try again.")}\n`);
-        enqueue(`d:${JSON.stringify({ finishReason: "error", usage: { promptTokens: 0, completionTokens: 0 } })}\n`);
+        enqueue(
+          `d:${JSON.stringify({ finishReason: "error", usage: { promptTokens: 0, completionTokens: 0 } })}\n`,
+        );
       } finally {
         controller.close();
       }

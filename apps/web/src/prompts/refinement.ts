@@ -4,23 +4,26 @@ export function refinementPrompt(
   calendar: WeeklyCalendar,
   request: RefinementRequest,
 ): string {
-  return `You are modifying a student's weekly schedule based on their request.
+  return `You are modifying a student's weekly schedule. Use the available tools to apply the requested changes.
 
 Current schedule:
-${JSON.stringify(calendar, null, 2)}
+- Student: ${calendar.metadata.studentName}
+- Total blocks: ${calendar.blocks.length}
+- Version: ${calendar.metadata.version}
 
 Modification request (type: ${request.type}):
 "${request.message}"
 ${request.targetBlockId ? `Target block ID: ${request.targetBlockId}` : ""}
-${request.targetBlockTitle ? `Target block: ${request.targetBlockTitle}` : ""}
+${request.targetBlockTitle ? `Target block: "${request.targetBlockTitle}"` : ""}
 
-Rules:
-- For "targeted" requests: move or resize only the specified block
-- For "global" requests: reschedule across the entire week to satisfy the constraint
-- After modification: no overlaps allowed, daily load must remain reasonable (≤10h)
-- Keep all fixed blocks (isFixed: true) in place — do not move lectures
-- Preserve block IDs for existing blocks (only change times/days)
-- Increment metadata.version by 1
+Instructions:
+1. Use listBlocks first if you need to find specific block IDs
+2. For targeted changes: use moveBlock, addBlock, or removeBlock on specific blocks
+3. For global restructuring: use replaceCalendar with a fully rebuilt schedule
+4. Rules that must hold after your changes:
+   - Blocks where isFixed = true are lectures — never move or remove them
+   - No time overlaps allowed on the same day
+   - Daily study load must stay ≤ 10 hours
 
-Respond ONLY in valid JSON matching the provided WeeklyCalendar schema. No markdown, no preamble, no explanation outside the JSON.`;
+After making all changes, confirm what you did in one short, friendly sentence. Do not use em dashes (—).`;
 }

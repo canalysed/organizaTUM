@@ -9,6 +9,7 @@ export async function onboardingNode(
 ): Promise<Partial<AgentState>> {
   const result = await generateObject({
     model: getModel(),
+    mode: "tool",
     schema: OnboardingResponseSchema,
     messages: [
       { role: "system", content: onboardingPrompt() },
