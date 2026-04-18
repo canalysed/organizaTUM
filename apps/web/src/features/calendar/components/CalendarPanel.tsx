@@ -4,6 +4,7 @@ import { useCalendarStore } from "@/stores/calendar-store";
 import { CalendarView } from "./CalendarView";
 import { BlockEditor } from "./BlockEditor";
 import { ExportButton } from "./ExportButton";
+import { CsvUploadButton } from "./CsvUploadButton";
 
 export function CalendarPanel() {
   const { calendar, selectedBlock, isLoading } = useCalendarStore();
@@ -12,7 +13,10 @@ export function CalendarPanel() {
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-700">Weekly Schedule</span>
-        {calendar && <ExportButton />}
+        <div className="flex items-center gap-2">
+          <CsvUploadButton />
+          {calendar && <ExportButton />}
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden relative">

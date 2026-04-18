@@ -5,6 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import { WeeklyCalendarSchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
 import { useUserStore } from "@/stores/user-store";
 import { useCalendarStore } from "@/stores/calendar-store";
+import { parseTumCsv } from "@/lib/tum-csv-parser";
 import { TopBar } from "./TopBar";
 import { ProfilePage } from "./ProfilePage";
 import { TweaksPanel } from "./TweaksPanel";
@@ -28,6 +29,7 @@ export function AppClient() {
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [refineBlock, setRefineBlock] = useState<TimeBlock | null>(null);
   const [selection, setSelection] = useState<SelectionSlot[]>([]);
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   const setAgentPhase = useUserStore((s) => s.setAgentPhase);
   const agentPhase = useUserStore((s) => s.agentPhase);
@@ -79,6 +81,26 @@ export function AppClient() {
     }, 70);
     return () => clearInterval(iv);
   }, [calendar]);
+
+  const handleCsvImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const blocks = parseTumCsv(text);
+    const now = new Date();
+    const monday = new Date(now);
+    const day = monday.getDay();
+    monday.setDate(monday.getDate() - (day === 0 ? 6 : day - 1));
+    monday.setHours(0, 0, 0, 0);
+    setCalendar({
+      id: crypto.randomUUID(),
+      weekStart: monday.toISOString().split("T")[0]!,
+      blocks,
+      metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
+    });
+    setAppState("split");
+    if (csvInputRef.current) csvInputRef.current.value = "";
+  }, [setCalendar]);
 
   const handleSend = useCallback(() => {
     if (!input.trim()) return;
@@ -134,6 +156,7 @@ export function AppClient() {
 
   return (
     <div style={{ height: "100vh", width: "100vw", display: "flex", flexDirection: "column", background: "var(--bg)", position: "relative", overflow: "hidden" }}>
+      <input ref={csvInputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={handleCsvImport} />
       <TopBar appState={appState} buildProgress={buildProgress} onNavigate={setView}/>
 
       {view === "profile" ? (
@@ -141,7 +164,7 @@ export function AppClient() {
       ) : (
         <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
           {appState === "landing" && (
-            <div style={{ flex: 1, display: "flex", justifyContent: "center", animation: "fadeIn 500ms both" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", animation: "fadeIn 500ms both" }}>
               <ChatCenter
                 input={input}
                 setInput={setInput}
@@ -150,6 +173,29 @@ export function AppClient() {
                 refineBlock={refineBlock}
                 onClearBlock={() => setRefineBlock(null)}
               />
+              <div style={{ display: "flex", justifyContent: "center", paddingBottom: 32, animation: "fadeUp 600ms 300ms both" }}>
+                <button
+                  onClick={() => csvInputRef.current?.click()}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    fontSize: 12, color: "var(--ink-3)",
+                    padding: "6px 14px", borderRadius: 999,
+                    border: "1px dashed var(--line)",
+                    background: "transparent",
+                    cursor: "pointer",
+                    transition: "all 160ms ease",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--ink-2)"; e.currentTarget.style.borderColor = "var(--ink-4)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--ink-3)"; e.currentTarget.style.borderColor = "var(--line)"; }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  Import TUM Online CSV
+                </button>
+              </div>
             </div>
           )}
 
@@ -182,7 +228,31 @@ export function AppClient() {
                 selection={selection}
                 onSelectionChange={setSelection}
               />
-              <div style={{ padding: "16px 20px 20px 12px", height: "100%", overflow: "hidden", animation: "calendarIn 700ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both" }}>
+              <div style={{ padding: "16px 20px 20px 12px", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 8, animation: "calendarIn 700ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both" }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
+                  <button
+                    onClick={() => csvInputRef.current?.click()}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      fontSize: 11.5, color: "var(--ink-3)",
+                      padding: "5px 10px", borderRadius: 6,
+                      border: "1px solid var(--line)",
+                      background: "var(--bg-raised)",
+                      cursor: "pointer",
+                      transition: "all 120ms ease",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = "var(--ink-2)"; e.currentTarget.style.background = "var(--surface)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "var(--ink-3)"; e.currentTarget.style.background = "var(--bg-raised)"; }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Import CSV
+                  </button>
+                </div>
+                <div style={{ flex: 1, overflow: "hidden" }}>
                 <CalendarGrid
                   calendar={calendar}
                   isLoading={calendarLoading}
@@ -196,6 +266,7 @@ export function AppClient() {
                   onSelectionChange={setSelection}
                 />
               </div>
+            </div>
             </div>
           )}
         </div>
