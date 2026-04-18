@@ -38,6 +38,10 @@ export const AgentStateAnnotation = Annotation.Root({
     reducer: (_existing, incoming) => incoming,
     default: () => [],
   }),
+  identityName: Annotation<string | null>({
+    reducer: (_existing, incoming) => incoming,
+    default: () => null,
+  }),
 });
 
 export type AgentState = typeof AgentStateAnnotation.State;

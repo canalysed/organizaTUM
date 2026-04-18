@@ -6,6 +6,8 @@ import {
   getProfile,
   getNotes,
   getCourseAnalysis,
+  getCalendar,
+  getIdentity,
   saveProfile,
   saveCalendar,
   saveMessages,
@@ -28,17 +30,30 @@ export async function POST(req: NextRequest) {
 
   await ensureSession(sessionId);
 
-  const [resolvedProfile, userNotes, cachedAnalysis] = await Promise.all([
+  const [resolvedProfile, userNotes, cachedAnalysis, existingCalendar, identity] = await Promise.all([
     userProfile ?? getProfile(sessionId),
     getNotes(sessionId),
     getCourseAnalysis(sessionId),
+    getCalendar(sessionId),
+    getIdentity(sessionId),
   ]);
+
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const refinementRequest = existingCalendar
+    ? {
+        type: (lastUserMsg.startsWith("[") ? "targeted" : "global") as "global" | "targeted",
+        message: lastUserMsg,
+      }
+    : undefined;
 
   const requestWithContext = {
     ...parsed.data,
     userProfile: resolvedProfile ?? undefined,
     userNotes,
     courseAnalysis: cachedAnalysis ?? undefined,
+    calendar: existingCalendar ?? undefined,
+    refinementRequest,
+    identityName: identity?.fullName ?? null,
   };
 
   const encoder = new TextEncoder();

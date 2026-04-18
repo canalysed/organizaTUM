@@ -61,6 +61,7 @@ export function AppClient() {
   const { messages, append, isLoading, data } = useChat({
     api: "/api/chat",
     initialMessages,
+    body: { sessionId: sessionId ?? undefined },
   });
 
   const [messageThinking, setMessageThinking] = useState<Record<string, string[]>>({});

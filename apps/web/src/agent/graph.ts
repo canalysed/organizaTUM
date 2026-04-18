@@ -17,9 +17,14 @@ import type {
   UserProfile,
   UserNote,
   WeeklyCalendar,
+  RefinementRequest,
 } from "@organizaTUM/shared";
 
 export type { AgentStreamEvent };
+
+function routeFromStart(state: AgentState): string {
+  return state.calendar ? "refinement" : "onboarding";
+}
 
 function routeFromOnboarding(state: AgentState): string {
   if (!state.userProfile) return END;
@@ -31,7 +36,7 @@ function routeFromScheduling(state: AgentState): string {
 }
 
 function routeFromRefinement(state: AgentState): string {
-  return state.refinementRequest ? "refinement" : "leisure";
+  return state.refinementRequest ? "refinement" : END;
 }
 
 const graph = new StateGraph(AgentStateAnnotation)
@@ -40,11 +45,11 @@ const graph = new StateGraph(AgentStateAnnotation)
   .addNode("scheduling", schedulingNode)
   .addNode("refinement", refinementNode)
   .addNode("leisure", leisureNode)
-  .addEdge("__start__", "onboarding")
+  .addConditionalEdges("__start__", routeFromStart, ["onboarding", "refinement"])
   .addConditionalEdges("onboarding", routeFromOnboarding, ["analysis", END])
   .addEdge("analysis", "scheduling")
   .addConditionalEdges("scheduling", routeFromScheduling, ["refinement", "leisure"])
-  .addConditionalEdges("refinement", routeFromRefinement, ["refinement", "leisure"])
+  .addConditionalEdges("refinement", routeFromRefinement, ["refinement", END])
   .addEdge("leisure", END);
 
 const compiledGraph = graph.compile();
@@ -66,7 +71,13 @@ export interface GraphResult {
 }
 
 export async function runGraph(
-  request: ChatRequest & { userNotes?: UserNote[]; courseAnalysis?: CourseAnalysis[] },
+  request: ChatRequest & {
+    userNotes?: UserNote[];
+    courseAnalysis?: CourseAnalysis[];
+    calendar?: WeeklyCalendar;
+    refinementRequest?: RefinementRequest;
+    identityName?: string | null;
+  },
   onEvent: (event: AgentStreamEvent) => void,
 ): Promise<GraphResult> {
   const initialState: Partial<AgentState> = {
@@ -74,6 +85,9 @@ export async function runGraph(
     userProfile: request.userProfile ?? null,
     userNotes: request.userNotes ?? [],
     courseAnalysis: request.courseAnalysis ?? null,
+    calendar: request.calendar ?? null,
+    refinementRequest: request.refinementRequest ?? null,
+    identityName: request.identityName ?? null,
   };
 
   let calendar: WeeklyCalendar | null = null;
