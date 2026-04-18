@@ -112,6 +112,13 @@ export const UserProfileSchema = z.object({
   leisureInterests: z.array(z.string()),
   studyStrengths: z.array(z.string()),
   studyWeaknesses: z.array(z.string()),
+  // Scheduling detail fields — all optional with defaults for backwards compatibility
+  wakeUpTime: TimeSchema.default("08:00"),
+  sleepTime: TimeSchema.default("23:00"),
+  preferredStudyTime: z.enum(["morning", "afternoon", "evening"]).default("afternoon"),
+  maxDailyStudyHours: z.number().min(1).max(12).default(6),
+  weekendPreference: z.enum(["free", "light", "full"]).default("light"),
+  campusLocation: z.enum(["garching", "city", "weihenstephan"]).default("garching"),
 });
 export type UserProfile = z.infer<typeof UserProfileSchema>;
 
@@ -192,6 +199,53 @@ export const AgentPhaseSchema = z.enum([
 ]);
 export type AgentPhase = z.infer<typeof AgentPhaseSchema>;
 
+// ── User Notes (AI-extracted facts) ───────────────────────────────────────────
+
+export const NoteCategorySchema = z.enum([
+  "preference",
+  "constraint",
+  "strength",
+  "weakness",
+  "goal",
+]);
+export type NoteCategory = z.infer<typeof NoteCategorySchema>;
+
+export const UserNoteSchema = z.object({
+  id: z.string().uuid(),
+  sessionId: z.string(),
+  category: NoteCategorySchema,
+  content: z.string().min(1).max(500),
+  source: z.enum(["onboarding", "refinement", "manual"]),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type UserNote = z.infer<typeof UserNoteSchema>;
+
+export const NoteExtractionSchema = z.object({
+  notes: z.array(
+    z.object({
+      category: NoteCategorySchema,
+      content: z.string().min(1).max(500),
+      shouldSave: z.boolean(),
+    }),
+  ),
+  hasNewInformation: z.boolean(),
+});
+export type NoteExtraction = z.infer<typeof NoteExtractionSchema>;
+
+export const CreateNoteSchema = z.object({
+  category: NoteCategorySchema,
+  content: z.string().min(1).max(500),
+  source: z.literal("manual"),
+});
+export type CreateNote = z.infer<typeof CreateNoteSchema>;
+
+export const UpdateNoteSchema = z.object({
+  content: z.string().min(1).max(500).optional(),
+  category: NoteCategorySchema.optional(),
+});
+export type UpdateNote = z.infer<typeof UpdateNoteSchema>;
+
 // ── API Types ─────────────────────────────────────────────────────────────────
 
 export const ChatMessageSchema = z.object({
@@ -204,6 +258,7 @@ export const ChatRequestSchema = z.object({
   messages: z.array(ChatMessageSchema),
   userProfile: UserProfileSchema.optional(),
   sessionId: z.string().optional(),
+  userNotes: z.array(UserNoteSchema).optional().default([]),
 });
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 

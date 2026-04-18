@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useChat } from "@ai-sdk/react";
-import { WeeklyCalendarSchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
+import { useChat, type Message } from "@ai-sdk/react";
+import { WeeklyCalendarSchema, UserNoteSchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
 import { useUserStore } from "@/stores/user-store";
 import { useCalendarStore } from "@/stores/calendar-store";
 import { parseTumCsv } from "@/lib/tum-csv-parser";
@@ -30,22 +30,76 @@ export function AppClient() {
   const [refineBlock, setRefineBlock] = useState<TimeBlock | null>(null);
   const [selection, setSelection] = useState<SelectionSlot[]>([]);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const [initialMessages, setInitialMessages] = useState<Message[]>([]);
 
   const setAgentPhase = useUserStore((s) => s.setAgentPhase);
   const agentPhase = useUserStore((s) => s.agentPhase);
+  const sessionId = useUserStore((s) => s.sessionId);
+  const setSessionId = useUserStore((s) => s.setSessionId);
+  const setNotes = useUserStore((s) => s.setNotes);
   const calendar = useCalendarStore((s) => s.calendar);
   const calendarLoading = useCalendarStore((s) => s.isLoading);
   const setCalendar = useCalendarStore((s) => s.setCalendar);
   const setCalendarLoading = useCalendarStore((s) => s.setLoading);
   const updateBlock = useCalendarStore((s) => s.updateBlock);
 
-  const { messages, append, isLoading, data } = useChat({ api: "/api/chat" });
+  const { messages, append, isLoading, data } = useChat({
+    api: "/api/chat",
+    initialMessages,
+  });
 
-  // Process agent events (phases, calendar)
+  // On mount: hydrate notes and calendar from Supabase if sessionId exists
+  useEffect(() => {
+    if (!sessionId) return;
+
+    fetch(`/api/chat/messages?sessionId=${sessionId}`)
+      .then((r) => r.json())
+      .then((json: { messages: { role: string; content: string }[] }) => {
+        if (json.messages?.length) {
+          setInitialMessages(
+            json.messages.map((m, i) => ({
+              id: String(i),
+              role: m.role as Message["role"],
+              content: m.content,
+            })),
+          );
+          setAppState("chatting");
+        }
+      })
+      .catch(() => {});
+
+    fetch(`/api/user/notes?sessionId=${sessionId}`)
+      .then((r) => r.json())
+      .then((json: { notes: unknown[] }) => {
+        const notes = json.notes.flatMap((n) => {
+          const p = UserNoteSchema.safeParse(n);
+          return p.success ? [p.data] : [];
+        });
+        setNotes(notes);
+      })
+      .catch(() => {});
+
+    fetch(`/api/calendar?sessionId=${sessionId}`)
+      .then((r) => r.json())
+      .then((json: { calendar: unknown }) => {
+        if (!json.calendar) return;
+        const parsed = WeeklyCalendarSchema.safeParse(json.calendar);
+        if (parsed.success) {
+          setCalendar(parsed.data);
+          setAppState("split");
+        }
+      })
+      .catch(() => {});
+  }, [sessionId, setNotes, setCalendar]);
+
+  // Process agent events (phases, calendar, sessionId)
   useEffect(() => {
     if (!data?.length) return;
     for (const item of data) {
       const event = item as { type: string; payload: unknown };
+      if (event.type === "sessionId" && typeof event.payload === "string") {
+        setSessionId(event.payload);
+      }
       if (event.type === "phase") {
         setAgentPhase(event.payload as AgentPhase);
         if (event.payload === "scheduling") {
@@ -64,7 +118,7 @@ export function AppClient() {
         }
       }
     }
-  }, [data, setAgentPhase, setCalendar, setCalendarLoading]);
+  }, [data, setAgentPhase, setCalendar, setCalendarLoading, setSessionId]);
 
   // Animate build progress each time a fresh calendar arrives (not on per-block edits)
   const lastCalendarIdRef = useRef<string | null>(null);

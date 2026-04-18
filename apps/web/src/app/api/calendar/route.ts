@@ -1,9 +1,15 @@
 import type { NextRequest } from "next/server";
-import { WeeklyCalendarSchema, CalendarUpdateSchema } from "@organizaTUM/shared";
+import { CalendarUpdateSchema } from "@organizaTUM/shared";
+import { getCalendar } from "@/lib/db";
 
-export async function GET() {
-  // TODO: fetch from agent service or session store
-  return Response.json({ calendar: null });
+export const runtime = "nodejs";
+
+export async function GET(req: NextRequest) {
+  const sessionId = req.nextUrl.searchParams.get("sessionId");
+  if (!sessionId) return Response.json({ calendar: null });
+
+  const calendar = await getCalendar(sessionId);
+  return Response.json({ calendar });
 }
 
 export async function PUT(req: NextRequest) {
@@ -14,6 +20,5 @@ export async function PUT(req: NextRequest) {
     return Response.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  // TODO: apply update via agent service
   return Response.json({ ok: true });
 }

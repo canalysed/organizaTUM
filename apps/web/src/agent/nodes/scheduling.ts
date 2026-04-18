@@ -18,7 +18,7 @@ export async function schedulingNode(
     messages: [
       {
         role: "system",
-        content: schedulingPrompt(state.userProfile, state.courseAnalysis, mensaMenu),
+        content: schedulingPrompt(state.userProfile, state.courseAnalysis, mensaMenu, state.userNotes),
       },
     ],
   });

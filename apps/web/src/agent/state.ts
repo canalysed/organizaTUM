@@ -2,6 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import type {
   AgentPhase,
   UserProfile,
+  UserNote,
   CourseAnalysis,
   WeeklyCalendar,
   RefinementRequest,
@@ -32,6 +33,10 @@ export const AgentStateAnnotation = Annotation.Root({
   refinementRequest: Annotation<RefinementRequest | null>({
     reducer: (_existing, incoming) => incoming,
     default: () => null,
+  }),
+  userNotes: Annotation<UserNote[]>({
+    reducer: (_existing, incoming) => incoming,
+    default: () => [],
   }),
 });
 
