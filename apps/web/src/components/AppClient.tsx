@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useChat, type Message } from "@ai-sdk/react";
-import { WeeklyCalendarSchema, UserNoteSchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
+import { WeeklyCalendarSchema, UserNoteSchema, UserIdentitySchema, type AgentPhase, type TimeBlock } from "@organizaTUM/shared";
 import { useUserStore } from "@/stores/user-store";
 import { useCalendarStore } from "@/stores/calendar-store";
 import { parseTumCsv } from "@/lib/tum-csv-parser";
@@ -37,6 +37,7 @@ export function AppClient() {
   const sessionId = useUserStore((s) => s.sessionId);
   const setSessionId = useUserStore((s) => s.setSessionId);
   const setNotes = useUserStore((s) => s.setNotes);
+  const setIdentity = useUserStore((s) => s.setIdentity);
   const calendar = useCalendarStore((s) => s.calendar);
   const calendarLoading = useCalendarStore((s) => s.isLoading);
   const setCalendar = useCalendarStore((s) => s.setCalendar);
@@ -79,6 +80,14 @@ export function AppClient() {
       })
       .catch(() => {});
 
+    fetch(`/api/user/identity?sessionId=${sessionId}`)
+      .then((r) => r.json())
+      .then((json: { identity: unknown }) => {
+        const p = UserIdentitySchema.safeParse(json.identity);
+        if (p.success) setIdentity(p.data);
+      })
+      .catch(() => {});
+
     fetch(`/api/calendar?sessionId=${sessionId}`)
       .then((r) => r.json())
       .then((json: { calendar: unknown }) => {
@@ -90,7 +99,7 @@ export function AppClient() {
         }
       })
       .catch(() => {});
-  }, [sessionId, setNotes, setCalendar]);
+  }, [sessionId, setNotes, setCalendar, setIdentity]);
 
   // Process agent events (phases, calendar, sessionId)
   useEffect(() => {

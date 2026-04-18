@@ -119,7 +119,21 @@ export const UserProfileSchema = z.object({
   maxDailyStudyHours: z.number().min(1).max(12).default(6),
   weekendPreference: z.enum(["free", "light", "full"]).default("light"),
   campusLocation: z.enum(["garching", "city", "weihenstephan"]).default("garching"),
+  preferredMensa: z.string().optional(),
 });
+
+// ── User Identity ─────────────────────────────────────────────────────────────
+
+export const UserIdentitySchema = z.object({
+  sessionId: z.string(),
+  fullName: z.string().optional(),
+  tumEmail: z.string().email().optional(),
+  matriculationNumber: z.string().optional(),
+  degreeProgram: z.string().optional(),
+  faculty: z.string().optional(),
+  currentSemester: z.number().int().min(1).max(20).optional(),
+});
+export type UserIdentity = z.infer<typeof UserIdentitySchema>;
 export type UserProfile = z.infer<typeof UserProfileSchema>;
 
 // ── Weekly Calendar ───────────────────────────────────────────────────────────

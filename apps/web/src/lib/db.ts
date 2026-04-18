@@ -3,12 +3,14 @@ import {
   WeeklyCalendarSchema,
   CourseAnalysisSchema,
   UserNoteSchema,
+  UserIdentitySchema,
   type UserProfile,
   type WeeklyCalendar,
   type CourseAnalysis,
   type ChatMessage,
   type UserNote,
   type NoteCategory,
+  type UserIdentity,
 } from "@organizaTUM/shared";
 import { supabaseAdmin } from "./supabase";
 
@@ -265,4 +267,46 @@ export async function deleteNote(noteId: string, sessionId: string): Promise<voi
     .delete()
     .eq("id", noteId)
     .eq("session_id", sessionId);
+}
+
+// ── User Identity ─────────────────────────────────────────────────────────────
+
+export async function getIdentity(sessionId: string): Promise<UserIdentity | null> {
+  const { data, error } = await supabaseAdmin
+    .from("user_identity")
+    .select("*")
+    .eq("session_id", sessionId)
+    .single();
+
+  if (error || !data) return null;
+
+  const parsed = UserIdentitySchema.safeParse({
+    sessionId: data.session_id,
+    fullName: data.full_name ?? undefined,
+    tumEmail: data.tum_email ?? undefined,
+    matriculationNumber: data.matriculation_number ?? undefined,
+    degreeProgram: data.degree_program ?? undefined,
+    faculty: data.faculty ?? undefined,
+    currentSemester: data.current_semester ?? undefined,
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+export async function saveIdentity(
+  sessionId: string,
+  identity: Omit<UserIdentity, "sessionId">,
+): Promise<void> {
+  await supabaseAdmin.from("user_identity").upsert(
+    {
+      session_id: sessionId,
+      full_name: identity.fullName ?? null,
+      tum_email: identity.tumEmail ?? null,
+      matriculation_number: identity.matriculationNumber ?? null,
+      degree_program: identity.degreeProgram ?? null,
+      faculty: identity.faculty ?? null,
+      current_semester: identity.currentSemester ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "session_id" },
+  );
 }

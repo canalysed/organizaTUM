@@ -2,14 +2,16 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { UserProfile, AgentPhase, UserNote } from "@organizaTUM/shared";
+import type { UserProfile, AgentPhase, UserNote, UserIdentity } from "@organizaTUM/shared";
 
 interface UserState {
   profile: UserProfile | null;
+  identity: UserIdentity | null;
   agentPhase: AgentPhase;
   sessionId: string | null;
   notes: UserNote[];
   setProfile: (profile: UserProfile) => void;
+  setIdentity: (identity: UserIdentity) => void;
   setAgentPhase: (phase: AgentPhase) => void;
   setSessionId: (id: string) => void;
   setNotes: (notes: UserNote[]) => void;
@@ -22,10 +24,12 @@ export const useUserStore = create<UserState>()(
   persist(
     (set) => ({
       profile: null,
+      identity: null,
       agentPhase: "onboarding",
       sessionId: null,
       notes: [],
       setProfile: (profile) => set({ profile }),
+      setIdentity: (identity) => set({ identity }),
       setAgentPhase: (agentPhase) => set({ agentPhase }),
       setSessionId: (sessionId) => set({ sessionId }),
       setNotes: (notes) => set({ notes }),
@@ -40,7 +44,7 @@ export const useUserStore = create<UserState>()(
     {
       name: "organizatum-user",
       storage: createJSONStorage(() => localStorage),
-      // Only persist sessionId — profile and notes are loaded from Supabase on boot
+      // Only persist sessionId — profile, identity, and notes are loaded from Supabase on boot
       partialize: (state) => ({ sessionId: state.sessionId }),
     },
   ),
