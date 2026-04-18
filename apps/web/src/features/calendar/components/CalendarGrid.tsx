@@ -11,7 +11,27 @@ export const DAY_NAMES = [
 const HOUR_START = 8;
 const HOUR_END = 23;
 const EDGE_PX = 8;
-const WEEKEND_START = 5; // indices 5 (Sat) and 6 (Sun)
+const WEEKEND_START = 5;
+
+const SKELETON_SCHEDULE: Array<{ day: number; start: number; end: number; dim?: boolean }> = [
+  { day: 0, start: 9,    end: 10.5 },
+  { day: 0, start: 12,   end: 13,    dim: true },
+  { day: 0, start: 14,   end: 16   },
+  { day: 1, start: 8,    end: 9.5  },
+  { day: 1, start: 10,   end: 11.5 },
+  { day: 1, start: 13,   end: 13.75, dim: true },
+  { day: 2, start: 9,    end: 10.5 },
+  { day: 2, start: 12,   end: 13,    dim: true },
+  { day: 2, start: 14,   end: 15.5 },
+  { day: 3, start: 8,    end: 9.5  },
+  { day: 3, start: 11,   end: 12.5 },
+  { day: 3, start: 15,   end: 17   },
+  { day: 4, start: 9,    end: 10.5 },
+  { day: 4, start: 12,   end: 13,    dim: true },
+  { day: 4, start: 13.5, end: 15   },
+  { day: 5, start: 10,   end: 11.5, dim: true },
+  { day: 6, start: 11,   end: 12,   dim: true },
+];
 
 type Density = "compact" | "roomy";
 type BlockStyle = "muted" | "mono" | "accent";
@@ -39,6 +59,7 @@ interface PopupState { calBlock: CalendarBlock; orig: TimeBlock; x: number; y: n
 
 interface CalendarGridProps {
   calendar: WeeklyCalendar | null;
+  isLoading?: boolean;
   density: Density;
   blockStyle: BlockStyle;
   onBlockClick: (block: TimeBlock) => void;
@@ -112,7 +133,6 @@ function formatDateRange(monday: Date): string {
   return `${sm} ${monday.getDate()} \u2012 ${em} ${sunday.getDate()}`;
 }
 
-// Groups overlapping blocks per-day and assigns column indices
 function computeLayout(blocks: CalendarBlock[]): LayoutBlock[] {
   if (!blocks.length) return [];
   const sorted = [...blocks].sort((a, b) => a.start !== b.start ? a.start - b.start : b.end - a.end);
@@ -150,17 +170,13 @@ function computeLayout(blocks: CalendarBlock[]): LayoutBlock[] {
   return result;
 }
 
-// ─── Drag state ─────────────────────────────────────────────────────────────
-
 type DragState =
   | { kind: "new"; day: number; colTop: number; startY: number; endY: number }
   | { kind: "move" | "resize-top" | "resize-bottom"; slotId: string; day: number; origStart: number; origEnd: number; startClientY: number; hourPx: number }
-  | { kind: "block-move"; blockId: string; origDay: number; origStart: number; origEnd: number; startClientY: number; hourPx: number };
-
-// ─── Component ───────────────────────────────────────────────────────────────
+  | { kind: "block-move"; blockId: string; origDay: number; origStart: number; origEnd: number; startClientX: number; startClientY: number; hourPx: number; hasMoved: boolean };
 
 export function CalendarGrid({
-  calendar, density, blockStyle,
+  calendar, isLoading = false, density, blockStyle,
   onBlockClick, onBlockMove, selectedId,
   buildProgress, selection, onSelectionChange,
 }: CalendarGridProps) {
@@ -178,8 +194,7 @@ export function CalendarGrid({
   const weekNum = getISOWeek(monday);
   const dateRange = formatDateRange(monday);
 
-  // todayIdx: 0=Mon … 5=Sat, 6=Sun  (–1 when viewing another week)
-  const todayDow = new Date().getDay(); // 0=Sun … 6=Sat
+  const todayDow = new Date().getDay();
   const todayIdx = weekOffset === 0 ? (todayDow === 0 ? 6 : todayDow - 1) : -1;
   const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
   const nowTop = (nowHour - HOUR_START) * hourPx;
@@ -187,17 +202,16 @@ export function CalendarGrid({
   const blocks = calendar ? toCalendarBlocks(calendar) : [];
   const visibleCount = Math.ceil(blocks.length * buildProgress);
 
-  // Auto-scroll to current time on mount
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = Math.max(0, nowTop - hourPx * 2);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const [popup, setPopup] = useState<PopupState | null>(null);
 
-  // ── Drag refs ──────────────────────────────────────────────────────────────
+  // Sync state cleanly to refs for the global event listeners
   const dragRef = useRef<DragState | null>(null);
   const selectionRef = useRef(selection);
   useEffect(() => { selectionRef.current = selection; }, [selection]);
@@ -209,6 +223,11 @@ export function CalendarGrid({
   useEffect(() => { totalHRef.current = totalHeight; }, [totalHeight]);
   const hourPxRef = useRef(hourPx);
   useEffect(() => { hourPxRef.current = hourPx; }, [hourPx]);
+
+  const blocksRef = useRef(blocks);
+  useEffect(() => { blocksRef.current = blocks; }, [blocks]);
+  const calendarRef = useRef(calendar);
+  useEffect(() => { calendarRef.current = calendar; }, [calendar]);
 
   const [liveDrag, setLiveDrag] = useState<{ day: number; startY: number; endY: number } | null>(null);
   const [draftSlot, setDraftSlot] = useState<SelectionSlot | null>(null);
@@ -225,7 +244,6 @@ export function CalendarGrid({
   const snap = (h: number) => Math.round(h * 4) / 4;
   const yToHour = (y: number) => HOUR_START + Math.max(0, Math.min(hours, y / hourPxRef.current));
 
-  // ── Document-level listeners ───────────────────────────────────────────────
   useEffect(() => {
     const getDayFromX = (clientX: number): number => {
       let best = 0, bestDist = Infinity;
@@ -240,9 +258,11 @@ export function CalendarGrid({
       return best;
     };
 
-    const onMove = (e: MouseEvent) => {
+    // Use PointerEvents globally so e.clientX is always present and mobile works flawlessly
+    const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
+
       if (d.kind === "new") {
         const y = e.clientY - d.colTop;
         const clamped = Math.max(0, Math.min(totalHRef.current, y));
@@ -250,7 +270,21 @@ export function CalendarGrid({
         setLiveDrag({ day: d.day, startY: d.startY, endY: clamped });
         return;
       }
+      
       if (d.kind === "block-move") {
+        if (!d.hasMoved) {
+          const dist = Math.hypot(e.clientX - d.startClientX, e.clientY - d.startClientY);
+          if (dist > 5) {
+            d.hasMoved = true;
+            setCursorOverride("grabbing");
+            const init: BlockDraft = { id: d.blockId, day: d.origDay, start: d.origStart, end: d.origEnd };
+            draftBlockRef.current = init;
+            setDraftBlock(init);
+          } else {
+            return;
+          }
+        }
+
         const deltaH = (e.clientY - d.startClientY) / d.hourPx;
         const duration = d.origEnd - d.origStart;
         const ns = snap(Math.max(HOUR_START, Math.min(HOUR_END - duration, d.origStart + deltaH)));
@@ -259,6 +293,7 @@ export function CalendarGrid({
         setDraftBlock({ ...draft });
         return;
       }
+      
       const deltaH = (e.clientY - d.startClientY) / d.hourPx;
       const dur = d.origEnd - d.origStart;
       let ns = d.origStart, ne = d.origEnd;
@@ -274,9 +309,10 @@ export function CalendarGrid({
       setDraftSlot({ ...draftSlotRef.current });
     };
 
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
+
       if (d.kind === "new") {
         const t = Math.min(d.startY, d.endY), bot = Math.max(d.startY, d.endY);
         if (bot - t >= 10) {
@@ -285,8 +321,18 @@ export function CalendarGrid({
         }
         setLiveDrag(null);
       } else if (d.kind === "block-move") {
-        const draft = draftBlockRef.current;
-        if (draft) onBlockMoveRef.current?.(draft.id, draft.day, draft.start, draft.end);
+        if (!d.hasMoved) {
+          // Reliable click detection since movement didn't exceed 5px
+          const block = blocksRef.current.find(b => b.id === d.blockId);
+          const orig = calendarRef.current?.blocks.find(tb => tb.id === d.blockId);
+          if (block && orig) {
+            setPopup({ calBlock: block, orig, x: e.clientX, y: e.clientY });
+          }
+        } else {
+          // Complete the drag
+          const draft = draftBlockRef.current;
+          if (draft) onBlockMoveRef.current?.(draft.id, draft.day, draft.start, draft.end);
+        }
         setDraftBlock(null); draftBlockRef.current = null;
       } else {
         const draft = draftSlotRef.current;
@@ -297,15 +343,17 @@ export function CalendarGrid({
       setCursorOverride("");
     };
 
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp); // Handles window blur / mobile interrupts
     return () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
     };
-  }, []); // intentionally empty — all reads go through refs
+  }, []); 
 
-  const startNewDrag = (dayIdx: number, e: React.MouseEvent<HTMLDivElement>) => {
+  const startNewDrag = (dayIdx: number, e: React.PointerEvent<HTMLDivElement>) => {
     const colEl = dayColRefs.current[dayIdx];
     if (!colEl) return;
     const rect = colEl.getBoundingClientRect();
@@ -315,29 +363,36 @@ export function CalendarGrid({
     setCursorOverride("crosshair");
   };
 
-  const startSelectionDrag = (e: React.MouseEvent, slot: SelectionSlot, kind: "move" | "resize-top" | "resize-bottom") => {
-    e.stopPropagation(); e.preventDefault();
+  const startSelectionDrag = (e: React.PointerEvent, slot: SelectionSlot, kind: "move" | "resize-top" | "resize-bottom") => {
+    e.stopPropagation(); 
     dragRef.current = { kind, slotId: slot.id, day: slot.day, origStart: slot.start, origEnd: slot.end, startClientY: e.clientY, hourPx: hourPxRef.current };
     setDraftSlot({ ...slot }); draftSlotRef.current = { ...slot };
     setCursorOverride(kind === "move" ? "grabbing" : "ns-resize");
   };
 
-  const startBlockDrag = (e: React.MouseEvent, block: CalendarBlock) => {
-    e.stopPropagation(); e.preventDefault();
-    dragRef.current = { kind: "block-move", blockId: block.id, origDay: block.day, origStart: block.start, origEnd: block.end, startClientY: e.clientY, hourPx: hourPxRef.current };
-    const init: BlockDraft = { id: block.id, day: block.day, start: block.start, end: block.end };
-    setDraftBlock(init); draftBlockRef.current = init;
-    setCursorOverride("grabbing");
+  const startBlockDrag = (e: React.PointerEvent, block: CalendarBlock) => {
+    e.stopPropagation();
+    // Intentionally omitting e.preventDefault() so touch scrolls aren't destroyed indiscriminately.
+    // CSS 'touch-action: none' handles the native drag-vs-scroll negotiation cleanly.
+    dragRef.current = { 
+      kind: "block-move", 
+      blockId: block.id, 
+      origDay: block.day, 
+      origStart: block.start, 
+      origEnd: block.end, 
+      startClientX: e.clientX,
+      startClientY: e.clientY, 
+      hourPx: hourPxRef.current,
+      hasMoved: false
+    };
   };
 
-  // Weekends are narrower (0.72 fr) — mirrors Google Calendar's layout
   const gridCols = "56px repeat(5, 1fr) repeat(2, 0.72fr)";
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-raised)", borderRadius: 14, border: "1px solid var(--line)", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
       {cursorOverride && <style>{`* { cursor: ${cursorOverride} !important; }`}</style>}
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px 12px", borderBottom: "1px solid var(--line-soft)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
           <div className="serif" style={{ fontSize: 22, lineHeight: 1, color: "var(--ink)" }}>{dateRange}</div>
@@ -353,7 +408,6 @@ export function CalendarGrid({
         </div>
       </div>
 
-      {/* ── Legend ──────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", gap: 12, padding: "6px 20px", borderBottom: "1px solid var(--line-soft)", fontSize: 11, color: "var(--ink-3)", flexShrink: 0, flexWrap: "wrap" }}>
         {(["lecture", "exercise", "study", "meal", "leisure"] as const).map(k => (
           <div key={k} style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -363,14 +417,11 @@ export function CalendarGrid({
         ))}
       </div>
 
-      {/* ── Scrollable grid ─────────────────────────────────────────────── */}
       <div ref={scrollContainerRef} className="scroll" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative" }}>
         <div style={{ display: "grid", gridTemplateColumns: gridCols }}>
 
-          {/* Sticky corner cell */}
           <div style={{ position: "sticky", top: 0, zIndex: 20, background: "var(--bg-raised)", borderBottom: "1px solid var(--line)" }}/>
 
-          {/* Sticky day headers */}
           {ALL_DAYS.map((d, i) => {
             const isWeekend = i >= WEEKEND_START;
             const isToday = i === todayIdx;
@@ -406,7 +457,6 @@ export function CalendarGrid({
             );
           })}
 
-          {/* Hour labels column */}
           <div style={{ borderRight: "1px solid var(--line-soft)", position: "relative", height: totalHeight }}>
             {Array.from({ length: hours + 1 }).map((_, i) => (
               <div key={i} style={{ position: "absolute", top: i * hourPx, right: 7, fontSize: 9.5, color: "var(--ink-4)", fontFamily: "var(--font-mono, monospace)", transform: "translateY(-50%)", lineHeight: 1 }}>
@@ -415,10 +465,8 @@ export function CalendarGrid({
             ))}
           </div>
 
-          {/* Day columns */}
           {ALL_DAYS.map((_, dayIdx) => {
             const isWeekend = dayIdx >= WEEKEND_START;
-            // Use effective day for dragged blocks
             const dayBlocks = blocks.filter(b => (draftBlock?.id === b.id ? draftBlock.day : b.day) === dayIdx);
             const layout = computeLayout(dayBlocks);
             const daySel = selection.filter(s => s.day === dayIdx);
@@ -435,12 +483,11 @@ export function CalendarGrid({
                   cursor: "crosshair",
                   background: isWeekend ? "color-mix(in oklab, var(--bg-sunken) 22%, transparent)" : "transparent",
                 }}
-                onMouseDown={e => {
+                onPointerDown={e => {
                   if ((e.target as HTMLElement).closest("[data-sel-handle],[data-block],[data-del-btn]")) return;
                   startNewDrag(dayIdx, e);
                 }}
               >
-                {/* Hour grid lines */}
                 {Array.from({ length: hours }).map((_, i) => (
                   <span key={i}>
                     <div style={{ position: "absolute", left: 0, right: 0, top: i * hourPx, borderTop: "1px solid color-mix(in oklab, var(--line-soft) 65%, transparent)", pointerEvents: "none" }}/>
@@ -448,7 +495,6 @@ export function CalendarGrid({
                   </span>
                 ))}
 
-                {/* Selection overlays */}
                 {daySel.map(slot => {
                   const disp = draftSlot?.id === slot.id ? draftSlot : slot;
                   const c = SLOT_COLORS[selection.findIndex(s => s.id === slot.id) % SLOT_COLORS.length];
@@ -457,27 +503,48 @@ export function CalendarGrid({
                   const hasBody = h > 2 * EDGE_PX;
                   return (
                     <div key={slot.id} style={{ position: "absolute", left: 3, right: 3, top: top + 2, height: h - 4, background: c.bg, border: `1.5px solid ${c.border}`, borderRadius: 8, zIndex: 5, overflow: "hidden", opacity: draftSlot?.id === slot.id ? 0.85 : 1 }}>
-                      <div data-sel-handle="" style={{ position: "absolute", top: 0, left: 0, right: 0, height: hasBody ? EDGE_PX : "50%", cursor: "ns-resize", zIndex: 2 }} onMouseDown={e => startSelectionDrag(e, slot, "resize-top")}/>
+                      <div data-sel-handle="" style={{ position: "absolute", top: 0, left: 0, right: 0, height: hasBody ? EDGE_PX : "50%", cursor: "ns-resize", zIndex: 2, touchAction: "none" }} onPointerDown={e => startSelectionDrag(e, slot, "resize-top")}/>
                       {hasBody && (
-                        <div data-sel-handle="" style={{ position: "absolute", top: EDGE_PX, left: 0, right: 0, bottom: EDGE_PX, cursor: "grab", display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "2px 5px" }} onMouseDown={e => startSelectionDrag(e, slot, "move")}>
+                        <div data-sel-handle="" style={{ position: "absolute", top: EDGE_PX, left: 0, right: 0, bottom: EDGE_PX, cursor: "grab", display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "2px 5px", touchAction: "none" }} onPointerDown={e => startSelectionDrag(e, slot, "move")}>
                           <span style={{ fontSize: 9.5, color: c.dot, fontFamily: "var(--font-mono, monospace)", lineHeight: 1.4, userSelect: "none", pointerEvents: "none" }}>{formatT(disp.start)}<br/>{formatT(disp.end)}</span>
-                          <button data-del-btn="" style={{ width: 15, height: 15, borderRadius: 4, background: c.border, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }} onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSelectionChange(selection.filter(s => s.id !== slot.id)); }} aria-label="Remove"><Icon name="close" size={8}/></button>
+                          <button data-del-btn="" style={{ width: 15, height: 15, borderRadius: 4, background: c.border, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSelectionChange(selection.filter(s => s.id !== slot.id)); }} aria-label="Remove"><Icon name="close" size={8}/></button>
                         </div>
                       )}
                       {!hasBody && (
-                        <button data-del-btn="" style={{ position: "absolute", top: 2, right: 3, width: 13, height: 13, borderRadius: 3, background: c.border, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 3 }} onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSelectionChange(selection.filter(s => s.id !== slot.id)); }} aria-label="Remove"><Icon name="close" size={7}/></button>
+                        <button data-del-btn="" style={{ position: "absolute", top: 2, right: 3, width: 13, height: 13, borderRadius: 3, background: c.border, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 3 }} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSelectionChange(selection.filter(s => s.id !== slot.id)); }} aria-label="Remove"><Icon name="close" size={7}/></button>
                       )}
-                      <div data-sel-handle="" style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: hasBody ? EDGE_PX : "50%", cursor: "ns-resize", zIndex: 2 }} onMouseDown={e => startSelectionDrag(e, slot, "resize-bottom")}/>
+                      <div data-sel-handle="" style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: hasBody ? EDGE_PX : "50%", cursor: "ns-resize", zIndex: 2, touchAction: "none" }} onPointerDown={e => startSelectionDrag(e, slot, "resize-bottom")}/>
                     </div>
                   );
                 })}
 
-                {/* Live new-selection preview */}
                 {ld && (
                   <div style={{ position: "absolute", left: 3, right: 3, top: Math.min(ld.startY, ld.endY), height: Math.abs(ld.endY - ld.startY), background: "color-mix(in oklab, var(--ink) 8%, transparent)", border: "1.5px dashed var(--ink-3)", borderRadius: 8, pointerEvents: "none", zIndex: 5 }}/>
                 )}
 
-                {/* Calendar blocks */}
+                {isLoading && !calendar && SKELETON_SCHEDULE
+                  .filter(s => s.day === dayIdx)
+                  .map((s, i) => {
+                    const top = (s.start - HOUR_START) * hourPx;
+                    const height = (s.end - s.start) * hourPx;
+                    return (
+                      <div
+                        key={i}
+                        className="cal-skeleton"
+                        style={{
+                          position: "absolute",
+                          top: top + 2,
+                          height: height - 4,
+                          left: 4, right: 4,
+                          opacity: s.dim ? 0.45 : 0.7,
+                          animationDelay: `${i * 180}ms`,
+                          zIndex: 1,
+                        }}
+                      />
+                    );
+                  })
+                }
+
                 {layout.map(b => {
                   const globalIdx = blocks.findIndex(bl => bl.id === b.id);
                   if (globalIdx < 0 || globalIdx >= visibleCount) return null;
@@ -488,7 +555,7 @@ export function CalendarGrid({
                   const height = (dispEnd - dispStart) * hourPx;
                   const col = draft ? 0 : b.col;
                   const numCols = draft ? 1 : b.numCols;
-                  const orig = calendar?.blocks.find(tb => tb.id === b.id) ?? null;
+                  
                   return (
                     <div key={b.id} data-block="">
                       <Block
@@ -496,14 +563,12 @@ export function CalendarGrid({
                         top={top} height={height} col={col} numCols={numCols}
                         selected={selectedId === b.id} delayIdx={globalIdx}
                         isDragging={!!draft}
-                        onClick={e => { if (!orig || draft) return; setPopup({ calBlock: b, orig, x: e.clientX, y: e.clientY }); }}
                         onStartDrag={e => startBlockDrag(e, b)}
                       />
                     </div>
                   );
                 })}
 
-                {/* Current-time indicator */}
                 {dayIdx === todayIdx && nowTop >= 0 && nowTop <= totalHeight && (
                   <div style={{ position: "absolute", left: 0, right: 0, top: nowTop, pointerEvents: "none", zIndex: 6 }}>
                     <div style={{ position: "absolute", left: -1, top: -5, width: 10, height: 10, borderRadius: "50%", background: "oklch(52% 0.20 30)" }}/>
@@ -516,7 +581,6 @@ export function CalendarGrid({
         </div>
       </div>
 
-      {/* ── Event popup ─────────────────────────────────────────────────── */}
       {popup && (
         <EventPopup
           popup={popup}
@@ -528,17 +592,14 @@ export function CalendarGrid({
   );
 }
 
-// ─── Block chip ───────────────────────────────────────────────────────────────
-
 function Block({
   b, blockStyle, top, height, col, numCols,
-  selected, delayIdx, isDragging, onClick, onStartDrag,
+  selected, delayIdx, isDragging, onStartDrag,
 }: {
   b: CalendarBlock; blockStyle: BlockStyle;
   top: number; height: number; col: number; numCols: number;
   selected: boolean; delayIdx: number; isDragging?: boolean;
-  onClick: (e: React.MouseEvent) => void;
-  onStartDrag: (e: React.MouseEvent) => void;
+  onStartDrag: (e: React.PointerEvent) => void;
 }) {
   const [hov, setHov] = useState(false);
   const meta = KIND_META[b.kind];
@@ -578,9 +639,9 @@ function Block({
         transition: isDragging ? "none" : "transform 100ms ease, box-shadow 100ms ease",
         zIndex: isDragging ? 12 : 4,
         userSelect: "none",
+        touchAction: "none", // Critical: prevents mobile from scrolling the page when dragging
       }}
-      onClick={e => { e.stopPropagation(); onClick(e); }}
-      onMouseDown={e => { e.stopPropagation(); onStartDrag(e); }}
+      onPointerDown={e => { e.stopPropagation(); onStartDrag(e); }}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
     >
@@ -601,8 +662,6 @@ function Block({
   );
 }
 
-// ─── Event detail popup ───────────────────────────────────────────────────────
-
 function EventPopup({ popup, onClose, onRefine }: {
   popup: PopupState;
   onClose: () => void;
@@ -616,13 +675,20 @@ function EventPopup({ popup, onClose, onRefine }: {
   const x = popup.x + 16 + POPUP_W > vw ? popup.x - POPUP_W - 8 : popup.x + 16;
   const y = Math.min(popup.y - 16, vh - 200);
 
-  // Close on outside click
+  // Safe outside click listener that survives text-node clicks and mobile interactions
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (!(e.target as Element).closest("[data-popup]")) onClose();
+    const handler = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.("[data-popup]")) return;
+      onClose();
     };
+    
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
   }, [onClose]);
 
   return (
@@ -638,7 +704,6 @@ function EventPopup({ popup, onClose, onRefine }: {
         animation: "fadeIn 120ms ease both",
       }}
     >
-      {/* Colored header */}
       <div style={{ background: meta.color, padding: "11px 12px 9px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-mono, monospace)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>{meta.label}</div>
@@ -647,7 +712,6 @@ function EventPopup({ popup, onClose, onRefine }: {
         <button onClick={onClose} style={{ color: "rgba(255,255,255,0.75)", flexShrink: 0, lineHeight: 1, padding: 2, marginTop: -1 }} aria-label="Close"><Icon name="close" size={14}/></button>
       </div>
 
-      {/* Details */}
       <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink-2)" }}>
           <Icon name="calendar" size={13} style={{ color: "var(--ink-3)", flexShrink: 0 }}/>
