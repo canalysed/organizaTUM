@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import type { WeeklyCalendar, TimeBlock } from "@organizaTUM/shared";
 import { Icon } from "@/components/Icon";
 
@@ -68,6 +68,7 @@ interface CalendarGridProps {
   buildProgress: number;
   selection: SelectionSlot[];
   onSelectionChange: (s: SelectionSlot[]) => void;
+  onImportCsv?: () => void;
 }
 
 const KIND_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -178,11 +179,28 @@ type DragState =
 export function CalendarGrid({
   calendar, isLoading = false, density, blockStyle,
   onBlockClick, onBlockMove, selectedId,
-  buildProgress, selection, onSelectionChange,
+  buildProgress, selection, onSelectionChange, onImportCsv,
 }: CalendarGridProps) {
-  const hourPx = density === "compact" ? 44 : 62;
   const hours = HOUR_END - HOUR_START;
-  const totalHeight = hours * hourPx;
+
+  // Dynamic hourPx — measured from the grid body height so calendar is non-scrollable
+  const gridBodyRef = useRef<HTMLDivElement>(null);
+  const [dynamicHourPx, setDynamicHourPx] = useState(0);
+  const hourPx = dynamicHourPx > 0 ? dynamicHourPx : (density === "compact" ? 44 : 62);
+  const totalHeight = hourPx * hours;
+
+  useLayoutEffect(() => {
+    const el = gridBodyRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = el.clientHeight;
+      if (h > 0) setDynamicHourPx(h / hours);
+    };
+    measure();
+    const obs = new ResizeObserver(measure);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hours]);
 
   const [weekOffset, setWeekOffset] = useState(0);
   const monday = getWeekMonday(weekOffset);
@@ -202,16 +220,14 @@ export function CalendarGrid({
   const blocks = calendar ? toCalendarBlocks(calendar) : [];
   const visibleCount = Math.ceil(blocks.length * buildProgress);
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = Math.max(0, nowTop - hourPx * 2);
-    }
-  }, []);
+  // Resting: block dims when selection is active and block doesn't overlap any slot
+  const isResting = (b: CalendarBlock): boolean => {
+    if (!selection.length) return false;
+    return !selection.some(s => s.day === b.day && s.start < b.end && s.end > b.start);
+  };
 
   const [popup, setPopup] = useState<PopupState | null>(null);
 
-  // Sync state cleanly to refs for the global event listeners
   const dragRef = useRef<DragState | null>(null);
   const selectionRef = useRef(selection);
   useEffect(() => { selectionRef.current = selection; }, [selection]);
@@ -258,7 +274,6 @@ export function CalendarGrid({
       return best;
     };
 
-    // Use PointerEvents globally so e.clientX is always present and mobile works flawlessly
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
@@ -270,7 +285,7 @@ export function CalendarGrid({
         setLiveDrag({ day: d.day, startY: d.startY, endY: clamped });
         return;
       }
-      
+
       if (d.kind === "block-move") {
         if (!d.hasMoved) {
           const dist = Math.hypot(e.clientX - d.startClientX, e.clientY - d.startClientY);
@@ -293,7 +308,7 @@ export function CalendarGrid({
         setDraftBlock({ ...draft });
         return;
       }
-      
+
       const deltaH = (e.clientY - d.startClientY) / d.hourPx;
       const dur = d.origEnd - d.origStart;
       let ns = d.origStart, ne = d.origEnd;
@@ -322,14 +337,12 @@ export function CalendarGrid({
         setLiveDrag(null);
       } else if (d.kind === "block-move") {
         if (!d.hasMoved) {
-          // Reliable click detection since movement didn't exceed 5px
           const block = blocksRef.current.find(b => b.id === d.blockId);
           const orig = calendarRef.current?.blocks.find(tb => tb.id === d.blockId);
           if (block && orig) {
             setPopup({ calBlock: block, orig, x: e.clientX, y: e.clientY });
           }
         } else {
-          // Complete the drag
           const draft = draftBlockRef.current;
           if (draft) onBlockMoveRef.current?.(draft.id, draft.day, draft.start, draft.end);
         }
@@ -345,13 +358,13 @@ export function CalendarGrid({
 
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
-    document.addEventListener("pointercancel", onUp); // Handles window blur / mobile interrupts
+    document.addEventListener("pointercancel", onUp);
     return () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("pointercancel", onUp);
     };
-  }, []); 
+  }, []);
 
   const startNewDrag = (dayIdx: number, e: React.PointerEvent<HTMLDivElement>) => {
     const colEl = dayColRefs.current[dayIdx];
@@ -364,7 +377,7 @@ export function CalendarGrid({
   };
 
   const startSelectionDrag = (e: React.PointerEvent, slot: SelectionSlot, kind: "move" | "resize-top" | "resize-bottom") => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     dragRef.current = { kind, slotId: slot.id, day: slot.day, origStart: slot.start, origEnd: slot.end, startClientY: e.clientY, hourPx: hourPxRef.current };
     setDraftSlot({ ...slot }); draftSlotRef.current = { ...slot };
     setCursorOverride(kind === "move" ? "grabbing" : "ns-resize");
@@ -372,35 +385,64 @@ export function CalendarGrid({
 
   const startBlockDrag = (e: React.PointerEvent, block: CalendarBlock) => {
     e.stopPropagation();
-    // Intentionally omitting e.preventDefault() so touch scrolls aren't destroyed indiscriminately.
-    // CSS 'touch-action: none' handles the native drag-vs-scroll negotiation cleanly.
-    dragRef.current = { 
-      kind: "block-move", 
-      blockId: block.id, 
-      origDay: block.day, 
-      origStart: block.start, 
-      origEnd: block.end, 
+    dragRef.current = {
+      kind: "block-move",
+      blockId: block.id,
+      origDay: block.day,
+      origStart: block.start,
+      origEnd: block.end,
       startClientX: e.clientX,
-      startClientY: e.clientY, 
+      startClientY: e.clientY,
       hourPx: hourPxRef.current,
       hasMoved: false
     };
   };
 
-  const gridCols = "56px repeat(5, 1fr) repeat(2, 0.72fr)";
+  const gridCols = "56px repeat(7, 1fr)";
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-raised)", borderRadius: 14, border: "1px solid var(--line)", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
       {cursorOverride && <style>{`* { cursor: ${cursorOverride} !important; }`}</style>}
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px 12px", borderBottom: "1px solid var(--line-soft)", flexShrink: 0 }}>
+      {/* ── Calendar header ─────────────────────────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 10px", borderBottom: "1px solid var(--line-soft)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <div className="serif" style={{ fontSize: 22, lineHeight: 1, color: "var(--ink)" }}>{dateRange}</div>
-          <div style={{ fontSize: 11, color: "var(--ink-4)", letterSpacing: "0.05em", textTransform: "uppercase" }}>Week {weekNum} · Summer Term</div>
+          <div className="serif" style={{ fontSize: 21, lineHeight: 1, color: "var(--ink)" }}>{dateRange}</div>
+          <div style={{ fontSize: 10.5, color: "var(--ink-4)", letterSpacing: "0.05em", textTransform: "uppercase" }}>W{weekNum} · SoSe 2026</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {onImportCsv && (
+            <button
+              onClick={onImportCsv}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                fontSize: 11.5, color: "var(--tum)",
+                padding: "5px 10px", borderRadius: 6,
+                border: "1px solid var(--tum-line)",
+                background: "var(--tum-soft)",
+                cursor: "pointer",
+                transition: "all 120ms ease",
+                marginRight: 4,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "color-mix(in oklab, var(--tum) 12%, white)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "var(--tum-soft)"; }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Import CSV
+            </button>
+          )}
           <button
-            style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--line)", background: weekOffset === 0 ? "var(--ink)" : "var(--surface)", color: weekOffset === 0 ? "var(--bg)" : "var(--ink-2)", cursor: "pointer", transition: "all 120ms ease" }}
+            style={{
+              fontSize: 12, padding: "4px 10px", borderRadius: 6,
+              border: weekOffset === 0 ? "1px solid var(--tum)" : "1px solid var(--line)",
+              background: weekOffset === 0 ? "var(--tum)" : "var(--surface)",
+              color: weekOffset === 0 ? "#fff" : "var(--ink-2)",
+              cursor: "pointer", transition: "all 120ms ease",
+            }}
             onClick={() => setWeekOffset(0)}
           >Today</button>
           <NavBtn label="Previous week" onClick={() => setWeekOffset(o => o - 1)}><Icon name="chevron" size={14} style={{ transform: "rotate(180deg)" }}/></NavBtn>
@@ -408,7 +450,8 @@ export function CalendarGrid({
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, padding: "6px 20px", borderBottom: "1px solid var(--line-soft)", fontSize: 11, color: "var(--ink-3)", flexShrink: 0, flexWrap: "wrap" }}>
+      {/* ── Legend ──────────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", gap: 12, padding: "5px 16px", borderBottom: "1px solid var(--line-soft)", fontSize: 10.5, color: "var(--ink-3)", flexShrink: 0, flexWrap: "wrap" }}>
         {(["lecture", "exercise", "study", "meal", "leisure"] as const).map(k => (
           <div key={k} style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <div style={{ width: 7, height: 7, borderRadius: 2, background: KIND_META[k].color }}/>
@@ -417,54 +460,60 @@ export function CalendarGrid({
         ))}
       </div>
 
-      <div ref={scrollContainerRef} className="scroll" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative" }}>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols }}>
-
-          <div style={{ position: "sticky", top: 0, zIndex: 20, background: "var(--bg-raised)", borderBottom: "1px solid var(--line)" }}/>
-
-          {ALL_DAYS.map((d, i) => {
-            const isWeekend = i >= WEEKEND_START;
-            const isToday = i === todayIdx;
-            return (
+      {/* ── Day headers row (outside scroll area) ───────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: gridCols, borderBottom: "1px solid var(--line)", flexShrink: 0 }}>
+        <div style={{ borderRight: "1px solid var(--line-soft)" }}/>
+        {ALL_DAYS.map((d, i) => {
+          const isWeekend = i >= WEEKEND_START;
+          const isToday = i === todayIdx;
+          return (
+            <div
+              key={d}
+              style={{
+                background: isWeekend
+                  ? "color-mix(in oklab, var(--bg-sunken) 55%, var(--bg-raised))"
+                  : "var(--bg-raised)",
+                borderLeft: "1px solid var(--line-soft)",
+                padding: "8px 8px 6px",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+              }}
+            >
+              <div style={{
+                fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600,
+                color: isToday ? "var(--tum)" : isWeekend ? "var(--ink-4)" : "var(--ink-3)",
+              }}>{d}</div>
               <div
-                key={d}
+                className="serif"
                 style={{
-                  position: "sticky", top: 0, zIndex: 20,
-                  background: isWeekend
-                    ? "color-mix(in oklab, var(--bg-sunken) 55%, var(--bg-raised))"
-                    : "var(--bg-raised)",
-                  borderBottom: "1px solid var(--line)",
-                  borderLeft: i === WEEKEND_START ? "1px solid var(--line-soft)" : "1px solid var(--line-soft)",
-                  padding: "9px 8px 7px",
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                  fontSize: 15, fontWeight: 500, lineHeight: 1,
+                  width: 26, height: 26, borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: isToday ? "var(--tum)" : "transparent",
+                  color: isToday ? "#fff" : isWeekend ? "var(--ink-3)" : "var(--ink-2)",
+                  transition: "background 200ms ease",
                 }}
               >
-                <div style={{ fontSize: 10, color: isToday ? "var(--lecture)" : isWeekend ? "var(--ink-4)" : "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>{d}</div>
-                <div
-                  className="serif"
-                  style={{
-                    fontSize: 16, fontWeight: 500, lineHeight: 1,
-                    width: 28, height: 28, borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: isToday ? "var(--lecture)" : "transparent",
-                    color: isToday ? "#fff" : isWeekend ? "var(--ink-3)" : "var(--ink-2)",
-                    transition: "background 200ms ease",
-                  }}
-                >
-                  {weekDates[i]}
-                </div>
+                {weekDates[i]}
               </div>
-            );
-          })}
+            </div>
+          );
+        })}
+      </div>
 
-          <div style={{ borderRight: "1px solid var(--line-soft)", position: "relative", height: totalHeight }}>
+      {/* ── Grid body — fills remaining height, no scroll ───────────────── */}
+      <div ref={gridBodyRef} style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridCols, height: "100%" }}>
+
+          {/* Time labels column */}
+          <div style={{ position: "relative", borderRight: "1px solid var(--line-soft)", height: totalHeight }}>
             {Array.from({ length: hours + 1 }).map((_, i) => (
-              <div key={i} style={{ position: "absolute", top: i * hourPx, right: 7, fontSize: 9.5, color: "var(--ink-4)", fontFamily: "var(--font-mono, monospace)", transform: "translateY(-50%)", lineHeight: 1 }}>
+              <div key={i} style={{ position: "absolute", top: i * hourPx, right: 7, fontSize: 9.5, color: "var(--ink-4)", fontFamily: "var(--font-mono, monospace)", transform: i === 0 ? "translateY(8px)" : i === hours ? "translateY(calc(-100% - 8px))" : "translateY(-50%)", lineHeight: 1 }}>
                 {String(HOUR_START + i).padStart(2, "0")}
               </div>
             ))}
           </div>
 
+          {/* Day columns */}
           {ALL_DAYS.map((_, dayIdx) => {
             const isWeekend = dayIdx >= WEEKEND_START;
             const dayBlocks = blocks.filter(b => (draftBlock?.id === b.id ? draftBlock.day : b.day) === dayIdx);
@@ -488,6 +537,7 @@ export function CalendarGrid({
                   startNewDrag(dayIdx, e);
                 }}
               >
+                {/* Hour grid lines */}
                 {Array.from({ length: hours }).map((_, i) => (
                   <span key={i}>
                     <div style={{ position: "absolute", left: 0, right: 0, top: i * hourPx, borderTop: "1px solid color-mix(in oklab, var(--line-soft) 65%, transparent)", pointerEvents: "none" }}/>
@@ -495,6 +545,7 @@ export function CalendarGrid({
                   </span>
                 ))}
 
+                {/* Selection slots */}
                 {daySel.map(slot => {
                   const disp = draftSlot?.id === slot.id ? draftSlot : slot;
                   const c = SLOT_COLORS[selection.findIndex(s => s.id === slot.id) % SLOT_COLORS.length];
@@ -518,33 +569,32 @@ export function CalendarGrid({
                   );
                 })}
 
+                {/* Live draw preview */}
                 {ld && (
                   <div style={{ position: "absolute", left: 3, right: 3, top: Math.min(ld.startY, ld.endY), height: Math.abs(ld.endY - ld.startY), background: "color-mix(in oklab, var(--ink) 8%, transparent)", border: "1.5px dashed var(--ink-3)", borderRadius: 8, pointerEvents: "none", zIndex: 5 }}/>
                 )}
 
+                {/* Skeleton loaders */}
                 {isLoading && !calendar && SKELETON_SCHEDULE
                   .filter(s => s.day === dayIdx)
-                  .map((s, i) => {
-                    const top = (s.start - HOUR_START) * hourPx;
-                    const height = (s.end - s.start) * hourPx;
-                    return (
-                      <div
-                        key={i}
-                        className="cal-skeleton"
-                        style={{
-                          position: "absolute",
-                          top: top + 2,
-                          height: height - 4,
-                          left: 4, right: 4,
-                          opacity: s.dim ? 0.45 : 0.7,
-                          animationDelay: `${i * 180}ms`,
-                          zIndex: 1,
-                        }}
-                      />
-                    );
-                  })
+                  .map((s, i) => (
+                    <div
+                      key={i}
+                      className="cal-skeleton"
+                      style={{
+                        position: "absolute",
+                        top: (s.start - HOUR_START) * hourPx + 2,
+                        height: (s.end - s.start) * hourPx - 4,
+                        left: 4, right: 4,
+                        opacity: s.dim ? 0.45 : 0.7,
+                        animationDelay: `${i * 180}ms`,
+                        zIndex: 1,
+                      }}
+                    />
+                  ))
                 }
 
+                {/* Calendar blocks */}
                 {layout.map(b => {
                   const globalIdx = blocks.findIndex(bl => bl.id === b.id);
                   if (globalIdx < 0 || globalIdx >= visibleCount) return null;
@@ -555,7 +605,7 @@ export function CalendarGrid({
                   const height = (dispEnd - dispStart) * hourPx;
                   const col = draft ? 0 : b.col;
                   const numCols = draft ? 1 : b.numCols;
-                  
+
                   return (
                     <div key={b.id} data-block="">
                       <Block
@@ -563,16 +613,18 @@ export function CalendarGrid({
                         top={top} height={height} col={col} numCols={numCols}
                         selected={selectedId === b.id} delayIdx={globalIdx}
                         isDragging={!!draft}
+                        isResting={isResting(b)}
                         onStartDrag={e => startBlockDrag(e, b)}
                       />
                     </div>
                   );
                 })}
 
+                {/* Current time indicator */}
                 {dayIdx === todayIdx && nowTop >= 0 && nowTop <= totalHeight && (
                   <div style={{ position: "absolute", left: 0, right: 0, top: nowTop, pointerEvents: "none", zIndex: 6 }}>
-                    <div style={{ position: "absolute", left: -1, top: -5, width: 10, height: 10, borderRadius: "50%", background: "oklch(52% 0.20 30)" }}/>
-                    <div style={{ position: "absolute", left: 8, right: 0, top: -1, height: 2, background: "oklch(52% 0.20 30)", borderRadius: 1 }}/>
+                    <div style={{ position: "absolute", left: -1, top: -5, width: 10, height: 10, borderRadius: "50%", background: "var(--tum)" }}/>
+                    <div style={{ position: "absolute", left: 8, right: 0, top: -1, height: 2, background: "var(--tum)", borderRadius: 1 }}/>
                   </div>
                 )}
               </div>
@@ -594,11 +646,12 @@ export function CalendarGrid({
 
 function Block({
   b, blockStyle, top, height, col, numCols,
-  selected, delayIdx, isDragging, onStartDrag,
+  selected, delayIdx, isDragging, isResting, onStartDrag,
 }: {
   b: CalendarBlock; blockStyle: BlockStyle;
   top: number; height: number; col: number; numCols: number;
   selected: boolean; delayIdx: number; isDragging?: boolean;
+  isResting?: boolean;
   onStartDrag: (e: React.PointerEvent) => void;
 }) {
   const [hov, setHov] = useState(false);
@@ -631,15 +684,16 @@ function Block({
             ? `0 0 0 2px ${meta.color}`
             : "0 1px 2px color-mix(in oklab, var(--ink) 5%, transparent)",
         cursor: isDragging ? "grabbing" : "grab",
-        opacity: isDragging ? 0.88 : 1,
+        opacity: isDragging ? 0.88 : isResting ? 0.2 : 1,
+        filter: isResting ? "grayscale(90%)" : "none",
         overflow: "hidden",
         display: "flex", flexDirection: "column", gap: 1,
         animation: `blockIn 380ms cubic-bezier(0.2, 0.8, 0.2, 1) ${delayIdx * 20}ms both`,
-        transform: isDragging ? "scale(1.025) translateZ(0)" : hov ? "translateY(-1px)" : "none",
-        transition: isDragging ? "none" : "transform 100ms ease, box-shadow 100ms ease",
+        transform: isDragging ? "scale(1.025) translateZ(0)" : hov && !isResting ? "translateY(-1px)" : "none",
+        transition: isDragging ? "none" : "transform 100ms ease, box-shadow 100ms ease, opacity 200ms ease, filter 200ms ease",
         zIndex: isDragging ? 12 : 4,
         userSelect: "none",
-        touchAction: "none", // Critical: prevents mobile from scrolling the page when dragging
+        touchAction: "none",
       }}
       onPointerDown={e => { e.stopPropagation(); onStartDrag(e); }}
       onMouseEnter={() => setHov(true)}
@@ -675,14 +729,12 @@ function EventPopup({ popup, onClose, onRefine }: {
   const x = popup.x + 16 + POPUP_W > vw ? popup.x - POPUP_W - 8 : popup.x + 16;
   const y = Math.min(popup.y - 16, vh - 200);
 
-  // Safe outside click listener that survives text-node clicks and mobile interactions
   useEffect(() => {
     const handler = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement | null;
       if (target?.closest?.("[data-popup]")) return;
       onClose();
     };
-    
     document.addEventListener("mousedown", handler);
     document.addEventListener("touchstart", handler, { passive: true });
     return () => {

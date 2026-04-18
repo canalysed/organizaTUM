@@ -226,6 +226,82 @@ export function AppClient() {
     }
   };
 
+  // Split state: sidebar-left / calendar-right grid, navbar only above sidebar
+  if (appState === "split" && view === "app") {
+    return (
+      <div style={{
+        height: "100vh", width: "100vw",
+        display: "grid",
+        gridTemplateColumns: "380px 1fr",
+        gridTemplateRows: "52px 1fr",
+        background: "var(--bg)",
+        overflow: "hidden",
+        position: "relative",
+      }}>
+        <input ref={csvInputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={handleCsvImport} />
+
+        {/* Navbar — column 1, row 1 only */}
+        <div style={{ gridColumn: 1, gridRow: 1, borderRight: "1px solid var(--line)", zIndex: 10 }}>
+          <TopBar appState={appState} buildProgress={buildProgress} onNavigate={setView}/>
+        </div>
+
+        {/* Sidebar — column 1, row 2 */}
+        <div style={{ gridColumn: 1, gridRow: 2, overflow: "hidden", borderRight: "1px solid var(--line)" }}>
+          <ChatSidebar
+            messages={messages}
+            input={input}
+            setInput={setInput}
+            onSend={handleSend}
+            isTyping={isLoading}
+            onAction={handleAction}
+            agentStatus={agentStatus}
+            refineBlock={refineBlock}
+            onClearBlock={() => setRefineBlock(null)}
+            selection={selection}
+            onSelectionChange={setSelection}
+          />
+        </div>
+
+        {/* Calendar — column 2, both rows (full viewport height) */}
+        <div style={{
+          gridColumn: 2,
+          gridRow: "1 / -1",
+          padding: "14px 20px 16px 14px",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          animation: "calendarIn 700ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
+        }}>
+          <CalendarGrid
+            calendar={calendar}
+            isLoading={calendarLoading}
+            density={density}
+            blockStyle={blockStyle}
+            onBlockClick={handleBlockClick}
+            onBlockMove={handleBlockMove}
+            selectedId={refineBlock?.id ?? null}
+            buildProgress={buildProgress}
+            selection={selection}
+            onSelectionChange={setSelection}
+            onImportCsv={() => csvInputRef.current?.click()}
+          />
+        </div>
+
+        <TweaksPanel
+          open={tweaksOpen}
+          setOpen={setTweaksOpen}
+          density={density}
+          setDensity={setDensity}
+          blockStyle={blockStyle}
+          setBlockStyle={setBlockStyle}
+          appState={appState}
+          setAppState={setAppState}
+        />
+      </div>
+    );
+  }
+
+  // Landing / chatting / profile states: full-width navbar layout
   return (
     <div style={{ height: "100vh", width: "100vw", display: "flex", flexDirection: "column", background: "var(--bg)", position: "relative", overflow: "hidden" }}>
       <input ref={csvInputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={handleCsvImport} />
@@ -283,63 +359,6 @@ export function AppClient() {
               selection={selection}
               onClearSelection={() => setSelection([])}
             />
-          )}
-
-          {appState === "split" && (
-            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "380px 1fr", animation: "splitIn 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both" }}>
-              <ChatSidebar
-                messages={messages}
-                input={input}
-                setInput={setInput}
-                onSend={handleSend}
-                isTyping={isLoading}
-                onAction={handleAction}
-                agentStatus={agentStatus}
-                refineBlock={refineBlock}
-                onClearBlock={() => setRefineBlock(null)}
-                selection={selection}
-                onSelectionChange={setSelection}
-              />
-              <div style={{ padding: "16px 20px 20px 12px", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 8, animation: "calendarIn 700ms 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both" }}>
-                <div style={{ display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
-                  <button
-                    onClick={() => csvInputRef.current?.click()}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 5,
-                      fontSize: 11.5, color: "var(--ink-3)",
-                      padding: "5px 10px", borderRadius: 6,
-                      border: "1px solid var(--line)",
-                      background: "var(--bg-raised)",
-                      cursor: "pointer",
-                      transition: "all 120ms ease",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = "var(--ink-2)"; e.currentTarget.style.background = "var(--surface)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = "var(--ink-3)"; e.currentTarget.style.background = "var(--bg-raised)"; }}
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="17 8 12 3 7 8"/>
-                      <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    Import CSV
-                  </button>
-                </div>
-                <div style={{ flex: 1, overflow: "hidden" }}>
-                <CalendarGrid
-                  calendar={calendar}
-                  isLoading={calendarLoading}
-                  density={density}
-                  blockStyle={blockStyle}
-                  onBlockClick={handleBlockClick}
-                  onBlockMove={handleBlockMove}
-                  selectedId={refineBlock?.id ?? null}
-                  buildProgress={buildProgress}
-                  selection={selection}
-                  onSelectionChange={setSelection}
-                />
-              </div>
-            </div>
-            </div>
           )}
         </div>
       )}

@@ -26,9 +26,15 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
   --shadow-lg: 0 8px 28px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.06);
 
+  /* TUM Brand */
+  --tum:          #3070B3;
+  --tum-ink:      #0C2340;
+  --tum-soft:     oklch(96% 0.03 247);
+  --tum-line:     oklch(82% 0.08 247);
+
   /* Block-kind colors */
-  --lecture:      oklch(50% 0.15 255);
-  --lecture-bg:   oklch(96% 0.04 255);
+  --lecture:      var(--tum);
+  --lecture-bg:   var(--tum-soft);
   --exercise:     oklch(50% 0.14 170);
   --exercise-bg:  oklch(96% 0.04 170);
   --study:        oklch(52% 0.13 65);
