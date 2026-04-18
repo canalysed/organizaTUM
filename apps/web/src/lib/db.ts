@@ -294,7 +294,7 @@ export async function saveIdentity(
   sessionId: string,
   identity: Omit<UserIdentity, "sessionId">,
 ): Promise<void> {
-  await getSupabaseAdmin().from("user_identity").upsert(
+  const { error } = await getSupabaseAdmin().from("user_identity").upsert(
     {
       session_id: sessionId,
       full_name: identity.fullName ?? null,
@@ -305,4 +305,5 @@ export async function saveIdentity(
     },
     { onConflict: "session_id" },
   );
+  if (error) throw new Error(`saveIdentity failed: ${error.message}`);
 }
