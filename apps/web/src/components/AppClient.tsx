@@ -10,6 +10,7 @@ import { useCalendarStore } from "@/stores/calendar-store";
 import { parseTumCsv } from "@/lib/tum-csv-parser";
 import { TopBar } from "./TopBar";
 import { ProfilePage } from "./ProfilePage";
+import { PlansPage } from "./PlansPage";
 import { TweaksPanel } from "./TweaksPanel";
 import { ChatCenter } from "@/features/chat/components/ChatCenter";
 import { ChatFloat } from "@/features/chat/components/ChatFloat";
@@ -17,7 +18,7 @@ import { ChatSidebar } from "@/features/chat/components/ChatSidebar";
 import { CalendarGrid, DAY_NAMES, formatT } from "@/features/calendar/components/CalendarGrid";
 
 type AppState = "landing" | "chatting" | "split";
-type View = "app" | "profile";
+type View = "app" | "profile" | "plans";
 type Density = "compact" | "roomy";
 type BlockStyleType = "muted" | "mono" | "accent";
 
@@ -354,6 +355,11 @@ export function AppClient() {
 
       {view === "profile" ? (
         <ProfilePage onClose={() => setView("app")}/>
+      ) : view === "plans" ? (
+        <PlansPage
+          onClose={() => setView("app")}
+          onOpen={(cal) => { setCalendar(cal); setView("app"); setAppState("split"); }}
+        />
       ) : (
         <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
           {appState === "landing" && (

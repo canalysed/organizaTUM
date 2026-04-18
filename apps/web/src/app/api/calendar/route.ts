@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { CalendarUpdateSchema } from "@organizaTUM/shared";
-import { getCalendar } from "@/lib/db";
+import { getCalendar, deleteCalendar } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -20,5 +20,17 @@ export async function PUT(req: NextRequest) {
     return Response.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  return Response.json({ ok: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const sessionId = req.nextUrl.searchParams.get("sessionId");
+  const weekStart = req.nextUrl.searchParams.get("weekStart");
+
+  if (!sessionId || !weekStart) {
+    return Response.json({ error: "Missing sessionId or weekStart" }, { status: 400 });
+  }
+
+  await deleteCalendar(sessionId, weekStart);
   return Response.json({ ok: true });
 }

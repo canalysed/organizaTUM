@@ -8,7 +8,7 @@ import { useCalendarStore } from "@/stores/calendar-store";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
 
 type AppState = "landing" | "chatting" | "split";
-type View = "app" | "profile";
+type View = "app" | "profile" | "plans";
 
 interface TopBarProps {
   appState: AppState;
@@ -175,7 +175,7 @@ export function TopBar({ appState, buildProgress, onNavigate, onHome, darkMode, 
                 <MenuItem icon="user" onClick={() => { setMenuOpen(false); onNavigate("profile"); }}>
                   Profile &amp; settings
                 </MenuItem>
-                <MenuItem icon="calendar">My semesters</MenuItem>
+                <MenuItem icon="calendar" onClick={() => { setMenuOpen(false); onNavigate("plans"); }}>My Plans</MenuItem>
                 <MenuItem icon="book">Course library</MenuItem>
                 <div style={{ height: 1, background: "var(--line-soft)", margin: "4px 6px" }}/>
                 <MenuItem icon="logout" onClick={handleSignOut}>Sign out</MenuItem>

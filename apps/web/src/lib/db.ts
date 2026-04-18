@@ -81,6 +81,14 @@ export async function saveCalendar(sessionId: string, calendar: WeeklyCalendar):
   );
 }
 
+export async function deleteCalendar(sessionId: string, weekStart: string): Promise<void> {
+  await getSupabaseAdmin()
+    .from("weekly_calendars")
+    .delete()
+    .eq("session_id", sessionId)
+    .eq("week_start", weekStart.slice(0, 10));
+}
+
 export async function getCalendarHistory(sessionId: string): Promise<WeeklyCalendar[]> {
   const { data, error } = await getSupabaseAdmin()
     .from("weekly_calendars")
