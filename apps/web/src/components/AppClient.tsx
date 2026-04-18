@@ -115,7 +115,7 @@ export function AppClient() {
               content: m.content,
             })),
           );
-          setAppState("chatting");
+          setAppState((prev) => (prev === "split" ? prev : "chatting"));
         }
       })
       .catch(() => {});
