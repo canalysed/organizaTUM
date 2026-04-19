@@ -80,9 +80,9 @@ export function TopBar({ appState, buildProgress, onNavigate, onHome, darkMode, 
         style={{ display: "flex", alignItems: "center", cursor: "pointer", padding: "2px 0" }}
         onClick={() => appState === "split" && onHome ? onHome() : onNavigate("app")}
       >
-        <span style={{ fontSize: 15.5, letterSpacing: "-0.01em", lineHeight: 1 }}>
-          <span style={{ fontWeight: 400, color: "var(--ink-2)" }}>Organiza</span>
-          <span style={{ fontWeight: 700, color: "var(--tum)" }}>TUM</span>
+        <span style={{ letterSpacing: "-0.01em", lineHeight: 1, display: "inline-flex", alignItems: "baseline" }}>
+          <span style={{ fontFamily: "var(--font-prata), Georgia, serif", fontWeight: 400, color: "var(--ink-2)", fontSize: 23 }}>Organiza</span>
+          <span style={{ fontFamily: "var(--font-exo2), system-ui, sans-serif", fontWeight: 700, color: "var(--tum)", fontSize: 26 }}>TUM</span>
         </span>
       </button>
 

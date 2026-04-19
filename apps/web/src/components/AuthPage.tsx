@@ -154,8 +154,8 @@ export function AuthPage() {
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ lineHeight: 1.1, display: "inline-flex", alignItems: "baseline", gap: 1 }}>
-            <span className="serif" style={{ fontWeight: 400, fontStyle: "italic", color: "var(--ink-2)", fontSize: 40 }}>Organiza</span>
-            <span style={{ fontWeight: 700, color: "var(--tum)", fontSize: 40 }}>TUM</span>
+            <span style={{ fontFamily: "var(--font-prata), Georgia, serif", fontWeight: 400, fontStyle: "italic", color: "var(--ink-2)", fontSize: 52 }}>Organiza</span>
+            <span style={{ fontFamily: "var(--font-exo2), system-ui, sans-serif", fontWeight: 700, color: "var(--tum)", fontSize: 57 }}>TUM</span>
           </div>
           <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 8 }}>
             Your AI-powered TUM scheduler

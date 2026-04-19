@@ -57,7 +57,10 @@ export function ChatPanel() {
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-tum-blue" />
-        <span className="text-sm font-medium text-gray-700">OrganizaTUM</span>
+        <span style={{ display: "inline-flex", alignItems: "baseline", lineHeight: 1 }}>
+          <span style={{ fontFamily: "var(--font-prata), Georgia, serif", fontWeight: 400, fontStyle: "italic", fontSize: 16, color: "var(--ink-2)" }}>Organiza</span>
+          <span style={{ fontFamily: "var(--font-exo2), system-ui, sans-serif", fontWeight: 700, fontSize: 21, color: "var(--tum)" }}>TUM</span>
+        </span>
       </div>
 
       <StatusIndicator steps={steps} isLoading={isLoading} />
