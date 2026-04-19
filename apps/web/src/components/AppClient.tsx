@@ -83,32 +83,38 @@ export function AppClient() {
     });
   }, [router, setSessionId]);
 
-  // Consume pending CSV from signup — runs once on mount, independent of API calls
-  useEffect(() => {
-    const pendingCsv = localStorage.getItem("pending_csv");
-    if (!pendingCsv) return;
-    localStorage.removeItem("pending_csv");
-    try {
-      const blocks = parseTumCsv(pendingCsv);
-      if (!blocks.length) return;
-      const now = new Date();
-      const monday = new Date(now);
-      const dow = monday.getDay();
-      monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
-      monday.setHours(0, 0, 0, 0);
-      setCalendar({
-        id: crypto.randomUUID(),
-        weekStart: monday.toISOString().split("T")[0]!,
-        blocks,
-        metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
-      });
-    } catch { /* ignore malformed CSV */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally runs once on mount
-
   // Hydrate profile, notes, identity, calendar when sessionId is available
+  // Also processes any pending CSV from signup (needs sessionId to persist to DB)
   useEffect(() => {
     if (!sessionId) return;
+
+    // Consume pending CSV first — save to DB so the AI sees it on next request
+    const pendingCsv = localStorage.getItem("pending_csv");
+    if (pendingCsv) {
+      localStorage.removeItem("pending_csv");
+      try {
+        const blocks = parseTumCsv(pendingCsv);
+        if (blocks.length) {
+          const now = new Date();
+          const monday = new Date(now);
+          const dow = monday.getDay();
+          monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
+          monday.setHours(0, 0, 0, 0);
+          const cal = {
+            id: crypto.randomUUID(),
+            weekStart: monday.toISOString().split("T")[0]!,
+            blocks,
+            metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
+          };
+          setCalendar(cal);
+          fetch("/api/calendar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId, calendar: cal }),
+          }).catch(() => {});
+        }
+      } catch { /* ignore malformed CSV */ }
+    }
 
     fetch(`/api/chat/messages?sessionId=${sessionId}`)
       .then((r) => r.json())
@@ -260,22 +266,29 @@ export function AppClient() {
       const blocks = parseTumCsv(text);
       if (!blocks.length) return;
       const now = new Date();
-      // weekStart: Monday of current week (calendar navigates from here)
       const monday = new Date(now);
       const dow = monday.getDay();
       monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
       monday.setHours(0, 0, 0, 0);
-      setCalendar({
+      const cal = {
         id: crypto.randomUUID(),
         weekStart: monday.toISOString().split("T")[0]!,
         blocks,
         metadata: { generatedAt: now.toISOString(), studentName: "Student", totalStudyHours: 0, version: 1 },
-      });
+      };
+      setCalendar(cal);
       setAppState("split");
+      if (sessionId) {
+        fetch("/api/calendar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, calendar: cal }),
+        }).catch(() => {});
+      }
     } catch {
       // silent — malformed CSV just does nothing
     }
-  }, [setCalendar]);
+  }, [setCalendar, sessionId]);
 
   const handleSend = useCallback(() => {
     if (!input.trim()) return;

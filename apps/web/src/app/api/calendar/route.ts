@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
-import { CalendarUpdateSchema } from "@organizaTUM/shared";
-import { getCalendar, deleteCalendar } from "@/lib/db";
+import { WeeklyCalendarSchema } from "@organizaTUM/shared";
+import { getCalendar, saveCalendar, deleteCalendar, ensureSession } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -12,14 +12,19 @@ export async function GET(req: NextRequest) {
   return Response.json({ calendar });
 }
 
-export async function PUT(req: NextRequest) {
+export async function POST(req: NextRequest) {
   const body = await req.json();
-  const parsed = CalendarUpdateSchema.safeParse(body);
+  const { sessionId, calendar: rawCalendar } = body as { sessionId?: string; calendar?: unknown };
 
+  if (!sessionId) return Response.json({ error: "Missing sessionId" }, { status: 400 });
+
+  const parsed = WeeklyCalendarSchema.safeParse(rawCalendar);
   if (!parsed.success) {
     return Response.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  await ensureSession(sessionId);
+  await saveCalendar(sessionId, parsed.data);
   return Response.json({ ok: true });
 }
 

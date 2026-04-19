@@ -1,11 +1,16 @@
-import type { UserProfile, CourseAnalysis, UserNote } from "@organizaTUM/shared";
+import type { UserProfile, CourseAnalysis, UserNote, TimeBlock } from "@organizaTUM/shared";
 
 export function schedulingPrompt(
   profile: UserProfile,
   courseAnalysis: CourseAnalysis[],
   mensaMenu: unknown,
   userNotes: UserNote[] = [],
+  existingFixedBlocks: TimeBlock[] = [],
 ): string {
+  const fixedSection =
+    existingFixedBlocks.length > 0
+      ? `\nExisting fixed blocks — include ALL of these verbatim (isFixed: true, do not change id/time/day):\n${JSON.stringify(existingFixedBlocks, null, 2)}\n`
+      : "";
   const notesSection =
     userNotes.length > 0
       ? JSON.stringify(
@@ -16,7 +21,7 @@ export function schedulingPrompt(
       : "None yet.";
 
   return `You are a scheduling expert building a personalized weekly schedule for a TUM student.
-
+${fixedSection}
 Student profile:
 ${JSON.stringify(profile, null, 2)}
 

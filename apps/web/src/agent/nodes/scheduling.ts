@@ -22,7 +22,13 @@ export async function schedulingNode(
     messages: [
       {
         role: "system",
-        content: schedulingPrompt(state.userProfile, state.courseAnalysis, mensaMenu, state.userNotes),
+        content: schedulingPrompt(
+          state.userProfile,
+          state.courseAnalysis,
+          mensaMenu,
+          state.userNotes,
+          state.calendar?.blocks.filter((b) => b.isFixed) ?? [],
+        ),
       },
       { role: "user", content: "Generate my personalized weekly schedule." },
     ],
