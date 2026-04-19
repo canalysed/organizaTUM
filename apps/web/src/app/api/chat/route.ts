@@ -1,251 +1,300 @@
 import type { NextRequest } from "next/server";
-import { streamText, tool, createDataStreamResponse } from "ai";
+import { streamText, tool } from "ai";
 import { z } from "zod";
 import { getModel } from "@/lib/bedrock-client";
 import type { WeeklyCalendar, ChatMessage } from "@organizaTUM/shared";
 import { WeeklyCalendarSchema } from "@organizaTUM/shared";
-import {
-  ensureSession,
-  getCalendar,
-  saveCalendar,
-  saveMessages,
-  getIdentity,
-} from "@/lib/db";
+import { ensureSession, getCalendar, saveCalendar, saveMessages, getProfile, getIdentity } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-const BlockSchema = z.object({
-  type: z
-    .enum(["lecture", "uebung", "study", "meal", "break", "leisure", "exercise", "commitment"])
-    .describe("Type of activity"),
-  title: z.string().describe("Activity name (e.g. 'Linear Algebra', 'Lunch', 'Study: LA')"),
-  dayOfWeek: z.enum([
-    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
-  ]),
-  startTime: z.string().describe("Start time in HH:MM 24h format"),
-  endTime: z.string().describe("End time in HH:MM 24h format"),
-  location: z.string().optional().describe("Room or building"),
-  courseId: z.string().optional().describe("Short course identifier"),
-  isFixed: z.boolean().optional().describe("True for lectures/commitments that cannot be moved"),
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function mondayOfCurrentWeek(): string {
+  const d = new Date();
+  const day = d.getDay(); // 0 = Sunday
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+// Schema used by all four tools
+const BlockInput = z.object({
+  type: z.enum(["lecture", "uebung", "study", "meal", "break", "leisure", "exercise", "commitment"]),
+  title: z.string().describe("Activity name, e.g. 'Linear Algebra', 'Study: LA', 'Lunch'"),
+  dayOfWeek: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
+  startTime: z.string().describe("HH:MM in 24h format"),
+  endTime: z.string().describe("HH:MM in 24h format"),
+  location: z.string().optional(),
+  courseId: z.string().optional(),
+  isFixed: z.boolean().optional().describe("true for lectures and fixed commitments"),
 });
 
-export async function POST(req: NextRequest) {
-  const body = (await req.json()) as {
-    messages: Array<{ role: string; content: string }>;
-    sessionId?: string;
-  };
+// ── Route ─────────────────────────────────────────────────────────────────────
 
-  const sessionId = body.sessionId ?? crypto.randomUUID();
-  const rawMessages: ChatMessage[] = (body.messages ?? []).filter(
-    (m): m is ChatMessage =>
-      (m.role === "user" || m.role === "assistant" || m.role === "system") &&
-      typeof m.content === "string",
+export async function POST(req: NextRequest) {
+  const body = (await req.json()) as { messages?: unknown; sessionId?: string };
+
+  const sessionId = typeof body.sessionId === "string" ? body.sessionId : crypto.randomUUID();
+
+  // Parse messages safely
+  const rawMessages: ChatMessage[] = (Array.isArray(body.messages) ? body.messages : []).flatMap(
+    (m: unknown) => {
+      if (
+        typeof m === "object" &&
+        m !== null &&
+        "role" in m &&
+        "content" in m &&
+        typeof (m as Record<string, unknown>).role === "string" &&
+        typeof (m as Record<string, unknown>).content === "string"
+      ) {
+        const role = (m as Record<string, unknown>).role as string;
+        if (role === "user" || role === "assistant" || role === "system") {
+          return [{ role, content: (m as Record<string, unknown>).content } as ChatMessage];
+        }
+      }
+      return [];
+    },
   );
 
   await ensureSession(sessionId);
 
-  const [existingCalendar, identity] = await Promise.all([
+  const [existingCalendar, profile, identity] = await Promise.all([
     getCalendar(sessionId),
+    getProfile(sessionId),
     getIdentity(sessionId),
   ]);
 
-  const calendarSummary = existingCalendar
-    ? `Current schedule has ${existingCalendar.blocks.length} blocks:\n${existingCalendar.blocks
+  // ── Build system prompt ───────────────────────────────────────────────────
+
+  const studentName = identity?.fullName ?? profile?.name ?? "Student";
+
+  const prefsLines = profile
+    ? [
+        `Learning style: ${profile.learningStyle === "spaced-repetition" ? "spaced repetition (many short sessions)" : "deep sessions (long focused blocks)"}`,
+        `Wake up: ${profile.wakeUpTime}  |  Sleep: ${profile.sleepTime}`,
+        `Preferred study time: ${profile.preferredStudyTime}`,
+        `Weekend: ${profile.weekendPreference === "free" ? "free (no studying)" : profile.weekendPreference === "light" ? "light (max 2h/day)" : "full (like weekdays)"}`,
+        `Max study hours/day: ${profile.maxDailyStudyHours}h`,
+      ].join("\n")
+    : "No preferences recorded yet.";
+
+  const calendarLines = existingCalendar
+    ? existingCalendar.blocks
         .map(
           (b) =>
-            `  [${b.id}] ${b.title} (${b.type}) ${b.dayOfWeek} ${b.startTime}-${b.endTime}${b.location ? ` @ ${b.location}` : ""}`,
+            `[${b.id}] ${b.type.padEnd(12)} "${b.title}" ${b.dayOfWeek} ${b.startTime}–${b.endTime}${b.location ? `  @${b.location}` : ""}`,
         )
-        .join("\n")}`
+        .join("\n")
     : "No schedule exists yet.";
 
-  const systemPrompt = `You are OrganizaTUM, a friendly AI scheduling assistant for TUM (Technical University of Munich) students. Your job is to create a personalized weekly study schedule through conversation, then refine it on request.
+  const SYSTEM = `You are OrganizaTUM, a scheduling assistant for TUM (Munich) students.
+You help students build and adjust their weekly study schedule through conversation.
 
-## Onboarding flow (first time, no schedule):
-1. Greet the user and ask their name and which courses they are taking this semester.
-2. Ask 1-2 follow-up questions maximum: preferred wake/sleep time, any fixed commitments (sport, club), whether they eat at Mensa.
-3. As soon as you have a name and at least one course, call generate_schedule. Do not wait for perfect information.
-4. After generating, describe the schedule in 2-3 sentences and offer to adjust it.
+━━━ STUDENT ━━━
+Name: ${studentName}
+${prefsLines}
 
-## Refinement (schedule exists):
-- For any change request (move a block, add/remove something, reschedule), use add_block, update_block, or remove_block.
-- Confirm each change in one short sentence.
-- When the user says "regenerate" or "redo the whole schedule", call generate_schedule again.
+━━━ CURRENT SCHEDULE ━━━
+${calendarLines}
 
-## Schedule generation rules:
-- Lectures/Uebungen are fixed (isFixed: true). Put them on the correct days/times.
-- Study blocks: 60-120 min each, spread Mon-Fri. Harder courses get more study time.
-- Meals: lunch 12:00-13:00, dinner 18:00-19:00 (only if eating Mensa).
-- Short break (15 min) after every 90 min of study.
-- Leisure/exercise: at least one block per day, preferably evening or weekend.
-- Respect wake and sleep times. Never schedule past midnight.
-- Weekend: lighter workload (leisure, 1-2 study blocks max).
-- Aim for 30-50 blocks total for a full realistic week.
+━━━ YOUR TOOLS ━━━
+• generate_schedule — build a complete new weekly schedule from scratch.
+• add_block         — add one new block to the existing schedule.
+• update_block      — modify an existing block (use the ID shown above).
+• remove_block      — delete a block (use the ID shown above).
 
-## Current state:
-Student: ${identity?.fullName ?? "not yet known"}
-${calendarSummary}
-`;
+━━━ RULES ━━━
+First time (no schedule): ask ONE question — what courses are they taking? Then call generate_schedule immediately.
+Schedule exists: use targeted tools for each change. Confirm in one sentence.
 
-  return createDataStreamResponse({
-    execute: async (dataStream) => {
-      dataStream.writeData({ type: "sessionId", payload: sessionId });
+When generating schedules:
+- Respect wake/sleep times. Never schedule before wake-up or after sleep.
+- Lectures/Übungen → isFixed: true. Put them on the correct days/times.
+- Study blocks: 60–120 min each, spread across the week matching preferred study time.
+- Harder courses get more study hours.
+- Lunch 12:00–13:00, Dinner 18:00–19:00 (meal blocks).
+- 15-min break after every 90 min of study.
+- At least one leisure/exercise block per day.
+- Weekend: respect weekend preference.
+- Aim for 35–50 blocks total.
+- Always respond with a short confirmation message after using tools.`;
 
-      let workingCalendar: WeeklyCalendar | null = existingCalendar;
+  // ── Stream setup ──────────────────────────────────────────────────────────
 
-      const result = streamText({
-        model: getModel(),
-        system: systemPrompt,
-        messages: rawMessages
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          })),
-        tools: {
-          generate_schedule: tool({
-            description:
-              "Generate or completely replace the weekly schedule. Call this once you know the student's name and at least one course.",
-            parameters: z.object({
-              studentName: z.string().describe("Student's first name"),
-              blocks: z
-                .array(BlockSchema)
-                .describe("All time blocks for the week (aim for 30-50 blocks)"),
+  let currentCalendar: WeeklyCalendar | null = existingCalendar;
+  let calendarWasUpdated = false;
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (line: string) => controller.enqueue(encoder.encode(line));
+
+      // Send session ID immediately so the client can persist it
+      send(`2:${JSON.stringify([{ type: "sessionId", payload: sessionId }])}\n`);
+
+      try {
+        const result = streamText({
+          model: getModel(),
+          system: SYSTEM,
+          messages: rawMessages
+            .filter((m) => m.role === "user" || m.role === "assistant")
+            .map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+          maxSteps: 5,
+          tools: {
+            // ── generate_schedule ──────────────────────────────────────────
+            generate_schedule: tool({
+              description:
+                "Generate a brand-new complete weekly schedule. Use this when no schedule exists, or when the user asks to redo/regenerate the whole schedule.",
+              parameters: z.object({
+                studentName: z.string(),
+                blocks: z.array(BlockInput).describe("All blocks for the week, 35-50 recommended"),
+              }),
+              execute: async ({ studentName, blocks }) => {
+                // Signal the client to show the skeleton/loading state
+                send(`2:${JSON.stringify([{ type: "phase", payload: "scheduling" }])}\n`);
+
+                const weekStart = mondayOfCurrentWeek();
+                const studyHours = blocks
+                  .filter((b) => b.type === "study")
+                  .reduce((sum, b) => {
+                    const [sh = 0, sm = 0] = b.startTime.split(":").map(Number);
+                    const [eh = 0, em = 0] = b.endTime.split(":").map(Number);
+                    return sum + (eh * 60 + em - (sh * 60 + sm)) / 60;
+                  }, 0);
+
+                const calendar = WeeklyCalendarSchema.safeParse({
+                  id: crypto.randomUUID(),
+                  weekStart,
+                  blocks: blocks.map((b) => ({
+                    id: crypto.randomUUID(),
+                    type: b.type,
+                    title: b.title,
+                    dayOfWeek: b.dayOfWeek,
+                    startTime: b.startTime,
+                    endTime: b.endTime,
+                    location: b.location ?? undefined,
+                    courseId: b.courseId ?? undefined,
+                    isFixed: b.isFixed ?? (b.type === "lecture" || b.type === "uebung"),
+                  })),
+                  metadata: {
+                    generatedAt: new Date().toISOString(),
+                    studentName,
+                    totalStudyHours: Math.round(studyHours * 10) / 10,
+                    version: 1,
+                  },
+                });
+
+                if (!calendar.success) {
+                  console.error("[generate_schedule] parse error:", calendar.error.flatten());
+                  return "Error: the generated schedule had invalid data. Please try again.";
+                }
+
+                currentCalendar = calendar.data;
+                calendarWasUpdated = true;
+                await saveCalendar(sessionId, calendar.data);
+                return `Schedule created: ${blocks.length} blocks, ${studyHours.toFixed(1)}h study/week.`;
+              },
             }),
-            execute: async ({ studentName, blocks }) => {
-              dataStream.writeData({ type: "phase", payload: "scheduling" });
 
-              const now = new Date();
-              const monday = new Date(now);
-              const dow = monday.getDay();
-              monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
-              monday.setHours(0, 0, 0, 0);
-
-              const studyHours = blocks
-                .filter((b) => b.type === "study")
-                .reduce((sum, b) => {
-                  const [sh = 0, sm = 0] = b.startTime.split(":").map(Number);
-                  const [eh = 0, em = 0] = b.endTime.split(":").map(Number);
-                  return sum + (eh * 60 + em - (sh * 60 + sm)) / 60;
-                }, 0);
-
-              const calendar: WeeklyCalendar = {
-                id: crypto.randomUUID(),
-                weekStart: monday.toISOString().split("T")[0]!,
-                blocks: blocks.map((b) => ({
+            // ── add_block ──────────────────────────────────────────────────
+            add_block: tool({
+              description: "Add one new block to the existing schedule.",
+              parameters: BlockInput,
+              execute: async (b) => {
+                if (!currentCalendar) return "No schedule exists yet — call generate_schedule first.";
+                const newBlock = {
                   id: crypto.randomUUID(),
                   type: b.type,
                   title: b.title,
                   dayOfWeek: b.dayOfWeek,
                   startTime: b.startTime,
                   endTime: b.endTime,
-                  location: b.location,
-                  courseId: b.courseId,
-                  isFixed: b.isFixed ?? (b.type === "lecture" || b.type === "uebung"),
-                  color: undefined,
-                  notes: undefined,
-                  date: undefined,
-                })),
-                metadata: {
-                  generatedAt: now.toISOString(),
-                  studentName,
-                  totalStudyHours: Math.round(studyHours * 10) / 10,
-                  version: 1,
-                },
-              };
-
-              const validated = WeeklyCalendarSchema.safeParse(calendar);
-              if (!validated.success) {
-                console.error("[generate_schedule] invalid:", validated.error.flatten());
-                return "Error: the generated schedule had invalid data. Please try again.";
-              }
-
-              workingCalendar = validated.data;
-              await saveCalendar(sessionId, validated.data);
-              dataStream.writeData({ type: "calendar", payload: validated.data });
-              dataStream.writeData({ type: "phase", payload: "done" });
-
-              return `Schedule created: ${blocks.length} blocks, ${studyHours.toFixed(1)}h study/week.`;
-            },
-          }),
-
-          add_block: tool({
-            description: "Add a single new block to the existing schedule",
-            parameters: BlockSchema,
-            execute: async (blockData) => {
-              const current = workingCalendar ?? (await getCalendar(sessionId));
-              if (!current) return "No schedule yet — use generate_schedule first.";
-
-              const newBlock = {
-                id: crypto.randomUUID(),
-                ...blockData,
-                isFixed: blockData.isFixed ?? false,
-                color: undefined,
-                notes: undefined,
-                date: undefined,
-              };
-              const updated = { ...current, blocks: [...current.blocks, newBlock] };
-              workingCalendar = updated;
-              await saveCalendar(sessionId, updated);
-              dataStream.writeData({ type: "calendar", payload: updated });
-              return `Added "${blockData.title}" (${blockData.dayOfWeek} ${blockData.startTime}-${blockData.endTime}).`;
-            },
-          }),
-
-          update_block: tool({
-            description:
-              "Update an existing block. Use the block ID from the current schedule state shown in your context.",
-            parameters: z.object({
-              blockId: z.string().describe("The exact ID of the block to update"),
-              updates: BlockSchema.partial().describe("Only the fields you want to change"),
+                  location: b.location ?? undefined,
+                  courseId: b.courseId ?? undefined,
+                  isFixed: b.isFixed ?? false,
+                };
+                currentCalendar = { ...currentCalendar, blocks: [...currentCalendar.blocks, newBlock] };
+                calendarWasUpdated = true;
+                await saveCalendar(sessionId, currentCalendar);
+                return `Added "${b.title}" on ${b.dayOfWeek} ${b.startTime}–${b.endTime}.`;
+              },
             }),
-            execute: async ({ blockId, updates }) => {
-              const current = workingCalendar ?? (await getCalendar(sessionId));
-              if (!current) return "No schedule yet.";
 
-              const block = current.blocks.find((b) => b.id === blockId);
-              if (!block) return `Block with ID "${blockId}" not found.`;
-
-              const updated = {
-                ...current,
-                blocks: current.blocks.map((b) => (b.id === blockId ? { ...b, ...updates } : b)),
-              };
-              workingCalendar = updated;
-              await saveCalendar(sessionId, updated);
-              dataStream.writeData({ type: "calendar", payload: updated });
-              return `Updated "${block.title}".`;
-            },
-          }),
-
-          remove_block: tool({
-            description: "Remove a block from the schedule by its ID",
-            parameters: z.object({
-              blockId: z.string().describe("The exact ID of the block to remove"),
+            // ── update_block ───────────────────────────────────────────────
+            update_block: tool({
+              description:
+                "Update fields on an existing block. Use the exact block ID from the schedule shown in your context.",
+              parameters: z.object({
+                blockId: z.string().describe("Exact ID of the block to update"),
+                updates: BlockInput.partial().describe("Only the fields you want to change"),
+              }),
+              execute: async ({ blockId, updates }) => {
+                if (!currentCalendar) return "No schedule yet.";
+                const block = currentCalendar.blocks.find((b) => b.id === blockId);
+                if (!block) return `Block "${blockId}" not found. Check the IDs in your context.`;
+                currentCalendar = {
+                  ...currentCalendar,
+                  blocks: currentCalendar.blocks.map((b) =>
+                    b.id === blockId ? { ...b, ...updates } : b,
+                  ),
+                };
+                calendarWasUpdated = true;
+                await saveCalendar(sessionId, currentCalendar);
+                return `Updated "${block.title}".`;
+              },
             }),
-            execute: async ({ blockId }) => {
-              const current = workingCalendar ?? (await getCalendar(sessionId));
-              if (!current) return "No schedule yet.";
 
-              const block = current.blocks.find((b) => b.id === blockId);
-              if (!block) return `Block "${blockId}" not found.`;
+            // ── remove_block ───────────────────────────────────────────────
+            remove_block: tool({
+              description: "Remove a block from the schedule by its ID.",
+              parameters: z.object({
+                blockId: z.string().describe("Exact ID of the block to remove"),
+              }),
+              execute: async ({ blockId }) => {
+                if (!currentCalendar) return "No schedule yet.";
+                const block = currentCalendar.blocks.find((b) => b.id === blockId);
+                if (!block) return `Block "${blockId}" not found.`;
+                currentCalendar = {
+                  ...currentCalendar,
+                  blocks: currentCalendar.blocks.filter((b) => b.id !== blockId),
+                };
+                calendarWasUpdated = true;
+                await saveCalendar(sessionId, currentCalendar);
+                return `Removed "${block.title}".`;
+              },
+            }),
+          },
+        });
 
-              const updated = {
-                ...current,
-                blocks: current.blocks.filter((b) => b.id !== blockId),
-              };
-              workingCalendar = updated;
-              await saveCalendar(sessionId, updated);
-              dataStream.writeData({ type: "calendar", payload: updated });
-              return `Removed "${block.title}".`;
-            },
-          }),
-        },
-        maxSteps: 5,
-        onFinish: async () => {
-          void saveMessages(sessionId, rawMessages).catch(() => {});
-        },
-      });
+        // Stream text chunks to the client
+        for await (const chunk of result.textStream) {
+          send(`0:${JSON.stringify(chunk)}\n`);
+        }
 
-      result.mergeIntoDataStream(dataStream);
+        // After all text, flush calendar update if any tool changed it
+        if (calendarWasUpdated && currentCalendar) {
+          send(`2:${JSON.stringify([{ type: "calendar", payload: currentCalendar }])}\n`);
+          send(`2:${JSON.stringify([{ type: "phase", payload: "done" }])}\n`);
+        }
+
+        send(`d:${JSON.stringify({ finishReason: "stop", usage: { promptTokens: 0, completionTokens: 0 } })}\n`);
+
+        void saveMessages(sessionId, rawMessages).catch(() => {});
+      } catch (err) {
+        console.error("[chat] error:", err);
+        send(`0:${JSON.stringify("Something went wrong. Please try again.")}\n`);
+        send(`d:${JSON.stringify({ finishReason: "error", usage: { promptTokens: 0, completionTokens: 0 } })}\n`);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "X-Vercel-AI-Data-Stream": "v1",
     },
   });
 }
