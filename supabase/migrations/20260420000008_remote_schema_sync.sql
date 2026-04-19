@@ -1,0 +1,2 @@
+-- Migration applied directly on remote (via Supabase dashboard).
+-- This stub ensures the local migration history stays in sync with the remote.
