@@ -4,7 +4,6 @@ import { onboardingNode } from "./nodes/onboarding";
 import { analysisNode } from "./nodes/analysis";
 import { schedulingNode } from "./nodes/scheduling";
 import { refinementNode } from "./nodes/refinement";
-import { leisureNode } from "./nodes/leisure";
 import {
   runWithStreamContext,
   emitThinking,
@@ -49,8 +48,8 @@ function routeFromOnboarding(state: AgentState): string {
   return state.courseAnalysis ? "scheduling" : "analysis";
 }
 
-function routeFromScheduling(state: AgentState): string {
-  return state.refinementRequest ? "refinement" : "leisure";
+function routeFromScheduling(_state: AgentState): string {
+  return END;
 }
 
 function routeFromRefinement(state: AgentState): string {
@@ -62,7 +61,6 @@ const graph = new StateGraph(AgentStateAnnotation)
   .addNode("analysis", analysisNode)
   .addNode("scheduling", schedulingNode)
   .addNode("refinement", refinementNode)
-  .addNode("leisure", leisureNode)
   .addConditionalEdges("__start__", routeFromStart, [
     "onboarding",
     "analysis",
@@ -71,9 +69,8 @@ const graph = new StateGraph(AgentStateAnnotation)
   ])
   .addConditionalEdges("onboarding", routeFromOnboarding, ["analysis", "scheduling", END])
   .addEdge("analysis", "scheduling")
-  .addConditionalEdges("scheduling", routeFromScheduling, ["refinement", "leisure"])
-  .addConditionalEdges("refinement", routeFromRefinement, ["refinement", END])
-  .addEdge("leisure", END);
+  .addConditionalEdges("scheduling", routeFromScheduling, [END])
+  .addConditionalEdges("refinement", routeFromRefinement, ["refinement", END]);
 
 const compiledGraph = graph.compile();
 
