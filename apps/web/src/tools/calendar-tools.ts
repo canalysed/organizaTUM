@@ -119,10 +119,19 @@ export function buildCalendarTools(initialCalendar: WeeklyCalendar) {
 
     replaceCalendar: tool({
       description:
-        "Replace the entire calendar with a completely new schedule. Use only for global restructuring requests.",
+        "Replace the entire calendar with a completely new schedule. ONLY use this when the student explicitly asks to rebuild their entire week from scratch. Never use this to add, move, or remove individual blocks — use addBlock, moveBlock, or removeBlock instead.",
       parameters: z.object({ calendar: WeeklyCalendarSchema }),
       execute: async (args) => {
-        calendar = args.calendar as WeeklyCalendar;
+        const newCalendar = args.calendar as WeeklyCalendar;
+        // Always preserve fixed blocks (lectures/Uebungen) from the original calendar
+        const fixedBlocks = calendar.blocks.filter((b: TimeBlock) => b.isFixed);
+        const newIds = new Set(newCalendar.blocks.map((b: TimeBlock) => b.id));
+        const missingFixed = fixedBlocks.filter((b: TimeBlock) => !newIds.has(b.id));
+        calendar = {
+          ...newCalendar,
+          blocks: [...newCalendar.blocks, ...missingFixed],
+          metadata: { ...newCalendar.metadata, version: newCalendar.metadata.version + 1 },
+        };
         return { ok: true, message: "Calendar fully replaced with new schedule" };
       },
     }),

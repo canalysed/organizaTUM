@@ -88,10 +88,10 @@ export function AppClient() {
   useEffect(() => {
     if (!sessionId) return;
 
-    // Consume pending CSV first — save to DB so the AI sees it on next request
+    // Consume pending CSV first — save to DB so the AI sees it on next request.
+    // IMPORTANT: only remove from localStorage after a confirmed save to avoid losing data on failure.
     const pendingCsv = localStorage.getItem("pending_csv");
     if (pendingCsv) {
-      localStorage.removeItem("pending_csv");
       try {
         const blocks = parseTumCsv(pendingCsv);
         if (blocks.length) {
@@ -111,9 +111,15 @@ export function AppClient() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionId, calendar: cal }),
-          }).catch(() => {});
+          })
+            .then(() => localStorage.removeItem("pending_csv"))
+            .catch(() => {}); // keep in localStorage for retry on next session load
+        } else {
+          localStorage.removeItem("pending_csv"); // empty CSV, discard
         }
-      } catch { /* ignore malformed CSV */ }
+      } catch {
+        localStorage.removeItem("pending_csv"); // malformed CSV, discard
+      }
     }
 
     fetch(`/api/chat/messages?sessionId=${sessionId}`)

@@ -26,12 +26,17 @@ function isProfileComplete(profile: UserProfile | null): boolean {
   return (profile?.courses.length ?? 0) > 0;
 }
 
+function isRawCsvCalendar(calendar: WeeklyCalendar): boolean {
+  const types = new Set(calendar.blocks.map((b) => b.type));
+  return !types.has("study") && !types.has("meal") && !types.has("break") && !types.has("leisure");
+}
+
 function routeFromStart(state: AgentState): string {
-  if (!state.calendar) {
-    // No calendar: skip onboarding if profile already complete (signup filled it in)
+  if (!state.calendar || isRawCsvCalendar(state.calendar)) {
+    // No calendar or only raw CSV lectures: build a full schedule
     return isProfileComplete(state.userProfile) ? "analysis" : "onboarding";
   }
-  // Calendar exists (raw CSV or full schedule) — always go to refinement
+  // Full schedule exists — go to refinement for incremental edits
   return "refinement";
 }
 

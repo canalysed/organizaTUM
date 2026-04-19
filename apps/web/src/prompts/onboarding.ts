@@ -7,8 +7,7 @@ export function onboardingPrompt(
   const hasCourses = (existingProfile?.courses?.length ?? 0) > 0;
   const hasLearningStyle =
     existingProfile?.learningStyle && existingProfile.learningStyle !== "unknown";
-  const hasSchedulePrefs =
-    existingProfile?.wakeUpTime && existingProfile.wakeUpTime !== "08:00";
+  const hasSchedulePrefs = !!(existingProfile?.wakeUpTime && existingProfile?.sleepTime);
   const hasWeekendPref = !!existingProfile?.weekendPreference;
 
   const knownFields: string[] = [];

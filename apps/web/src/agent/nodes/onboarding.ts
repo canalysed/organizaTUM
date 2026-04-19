@@ -33,6 +33,6 @@ export async function onboardingNode(
     currentPhase: response.isComplete ? "analysis" : "onboarding",
     userProfile: response.isComplete
       ? (response.profileSoFar as AgentState["userProfile"])
-      : null,
+      : state.userProfile, // keep existing profile from Supabase rather than wiping it
   };
 }
