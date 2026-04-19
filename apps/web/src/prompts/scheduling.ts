@@ -49,6 +49,7 @@ Build a complete WeeklyCalendar following these rules:
 12. No block may overlap another.
 
 Use ISO date for weekStart. Generate UUIDs for block IDs.
+Block titles must be plain text only — no bullet points, no special symbols (◆●•▸►), no markdown. German umlauts (Ü, Ö, Ä, ü, ö, ä, ß) are allowed and expected.
 
 Respond ONLY in valid JSON matching the provided schema. No markdown, no preamble, no explanation outside the JSON.`;
 }
