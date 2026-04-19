@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Instrument_Serif, JetBrains_Mono, Cormorant_Garamond, Exo_2 } from "next/font/google";
+import { Instrument_Serif, JetBrains_Mono, Playfair_Display, Exo_2 } from "next/font/google";
 import "./globals.css";
 
 const instrumentSerif = Instrument_Serif({
@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const cormorant = Cormorant_Garamond({
+const playfair = Playfair_Display({
   weight: ["400"],
   style: ["italic"],
   subsets: ["latin"],
@@ -43,7 +43,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${instrumentSerif.variable} ${jetbrainsMono.variable} ${cormorant.variable} ${exo2.variable}`}>
+    <html lang="en" className={`${instrumentSerif.variable} ${jetbrainsMono.variable} ${playfair.variable} ${exo2.variable}`} suppressHydrationWarning>
       <head>
         {/* Anti-FOUC: apply dark mode before hydration */}
         <script dangerouslySetInnerHTML={{ __html: `try{const s=JSON.parse(localStorage.getItem('organizatum-user')||'{}');if(s.state?.darkMode)document.documentElement.setAttribute('data-theme','dark');}catch(e){}` }}/>

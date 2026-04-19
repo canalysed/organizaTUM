@@ -272,6 +272,7 @@ export const ChatRequestSchema = z.object({
   userProfile: UserProfileSchema.optional(),
   sessionId: z.string().optional(),
   userNotes: z.array(UserNoteSchema).optional().default([]),
+  tumCourses: z.array(CourseSchema).optional(),
 });
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 
@@ -280,3 +281,19 @@ export const CalendarUpdateSchema = z.object({
   updates: TimeBlockSchema.partial(),
 });
 export type CalendarUpdate = z.infer<typeof CalendarUpdateSchema>;
+
+// ── TUMOnline Scraping ────────────────────────────────────────────────────────
+
+export const TUMScrapeRequestSchema = z.object({
+  tumUsername: z.string().min(1),
+  tumPassword: z.string().min(1),
+});
+export type TUMScrapeRequest = z.infer<typeof TUMScrapeRequestSchema>;
+
+export const ScrapeStatusSchema = z.object({
+  status: z.enum(["idle", "done", "error"]),
+  scrapedAt: z.string().datetime().optional(),
+  courseCount: z.number().optional(),
+  error: z.string().optional(),
+});
+export type ScrapeStatus = z.infer<typeof ScrapeStatusSchema>;

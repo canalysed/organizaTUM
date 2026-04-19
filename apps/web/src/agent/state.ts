@@ -7,6 +7,7 @@ import type {
   WeeklyCalendar,
   RefinementRequest,
   ChatMessage,
+  Course,
 } from "@organizaTUM/shared";
 
 export const AgentStateAnnotation = Annotation.Root({
@@ -39,6 +40,14 @@ export const AgentStateAnnotation = Annotation.Root({
     default: () => [],
   }),
   identityName: Annotation<string | null>({
+    reducer: (_existing, incoming) => incoming,
+    default: () => null,
+  }),
+  sessionId: Annotation<string | null>({
+    reducer: (_existing, incoming) => incoming,
+    default: () => null,
+  }),
+  tumCourses: Annotation<Course[] | null>({
     reducer: (_existing, incoming) => incoming,
     default: () => null,
   }),

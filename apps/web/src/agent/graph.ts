@@ -77,6 +77,7 @@ export async function runGraph(
     calendar?: WeeklyCalendar;
     refinementRequest?: RefinementRequest;
     identityName?: string | null;
+    sessionId?: string | null;
   },
   onEvent: (event: AgentStreamEvent) => void,
 ): Promise<GraphResult> {
@@ -88,6 +89,8 @@ export async function runGraph(
     calendar: request.calendar ?? null,
     refinementRequest: request.refinementRequest ?? null,
     identityName: request.identityName ?? null,
+    sessionId: request.sessionId ?? null,
+    tumCourses: request.tumCourses ?? null,
   };
 
   let calendar: WeeklyCalendar | null = null;

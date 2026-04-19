@@ -48,12 +48,14 @@ export async function POST(req: NextRequest) {
 
   const requestWithContext = {
     ...parsed.data,
+    sessionId,
     userProfile: resolvedProfile ?? undefined,
     userNotes,
     courseAnalysis: cachedAnalysis ?? undefined,
     calendar: existingCalendar ?? undefined,
     refinementRequest,
     identityName: identity?.fullName ?? null,
+    tumCourses: parsed.data.tumCourses ?? undefined,
   };
 
   const encoder = new TextEncoder();

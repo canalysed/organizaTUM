@@ -4,6 +4,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { UserProfileSchema } from "@organizaTUM/shared";
 import { ensureSession, getProfile, saveProfile } from "@/lib/db";
 
+export async function GET(req: NextRequest) {
+  const sessionId = req.nextUrl.searchParams.get("sessionId");
+  if (!sessionId) return NextResponse.json({ error: "sessionId required" }, { status: 400 });
+
+  const profile = await getProfile(sessionId);
+  if (!profile) return NextResponse.json({ profile: null });
+  return NextResponse.json({ profile });
+}
+
 export async function PUT(req: NextRequest) {
   const body = (await req.json()) as { sessionId?: string } & Record<string, unknown>;
   const { sessionId, ...rest } = body;

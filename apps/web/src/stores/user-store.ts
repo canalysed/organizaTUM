@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { UserProfile, AgentPhase, UserNote, UserIdentity } from "@organizaTUM/shared";
+import type { UserProfile, AgentPhase, UserNote, UserIdentity, Course } from "@organizaTUM/shared";
 
 interface UserState {
   profile: UserProfile | null;
@@ -10,6 +10,7 @@ interface UserState {
   agentPhase: AgentPhase;
   sessionId: string | null;
   notes: UserNote[];
+  tumCourses: Course[] | null;
   selectedCanteenId: string | null;
   darkMode: boolean;
   setProfile: (profile: UserProfile) => void;
@@ -20,6 +21,7 @@ interface UserState {
   addNote: (note: UserNote) => void;
   updateNote: (id: string, updates: Partial<UserNote>) => void;
   removeNote: (id: string) => void;
+  setTumCourses: (courses: Course[] | null) => void;
   setSelectedCanteenId: (id: string | null) => void;
   toggleDarkMode: () => void;
   clearAll: () => void;
@@ -33,6 +35,7 @@ export const useUserStore = create<UserState>()(
       agentPhase: "onboarding",
       sessionId: null,
       notes: [],
+      tumCourses: null,
       selectedCanteenId: null,
       darkMode: false,
       setProfile: (profile) => set({ profile }),
@@ -47,10 +50,11 @@ export const useUserStore = create<UserState>()(
         })),
       removeNote: (id) =>
         set((s) => ({ notes: s.notes.filter((n) => n.id !== id) })),
+      setTumCourses: (tumCourses) => set({ tumCourses }),
       setSelectedCanteenId: (selectedCanteenId) => set({ selectedCanteenId }),
       toggleDarkMode: () => set((s) => ({ darkMode: !s.darkMode })),
       clearAll: () =>
-        set({ profile: null, identity: null, sessionId: null, notes: [], agentPhase: "onboarding" }),
+        set({ profile: null, identity: null, sessionId: null, notes: [], tumCourses: null, agentPhase: "onboarding" }),
     }),
     {
       name: "organizatum-user",

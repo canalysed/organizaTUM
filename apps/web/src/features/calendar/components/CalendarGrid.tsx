@@ -45,6 +45,11 @@ interface CalendarBlock {
 }
 interface LayoutBlock extends CalendarBlock { col: number; numCols: number; }
 interface BlockDraft { id: string; day: number; start: number; end: number; }
+interface LassoState {
+  startX: number; startY: number; curX: number; curY: number; // content coords (for render)
+  clientStartX: number; clientStartY: number; clientCurX: number; clientCurY: number; // viewport coords (for detection)
+  active: boolean;
+}
 
 interface MealItem { name: string; price?: number; }
 interface SidebarState { calBlock: CalendarBlock; orig?: TimeBlock; }
@@ -99,6 +104,11 @@ const TYPE_TO_KIND: Record<string, CalendarBlock["kind"]> = {
   study: "study", meal: "meal", leisure: "leisure", break: "break", commitment: "exercise",
 };
 
+// Strip leading LLM-generated bullet/symbol chars (◆●•▸ etc.) from titles
+function sanitizeTitle(s: string): string {
+  return s.replace(/^[\u25A0-\u25FF\u2600-\u27BF\u2022\u2023\u203B\u2192\u2014\u2013*#\-\s]+/, "").trim();
+}
+
 function parseTime(t: string): number {
   const [h, m] = t.split(":").map(Number);
   return h + m / 60;
@@ -115,7 +125,7 @@ function toCalendarBlocks(cal: WeeklyCalendar): CalendarBlock[] {
     const base = {
       start: parseTime(b.startTime), end: parseTime(b.endTime),
       kind: (TYPE_TO_KIND[b.type] ?? "study") as CalendarBlock["kind"],
-      title: b.title, where: b.location, date: b.date,
+      title: sanitizeTitle(b.title), where: b.location, date: b.date,
     };
     if (b.notes === "daily") {
       for (let d = 0; d < 7; d++) {
@@ -182,8 +192,9 @@ function computeLayout(blocks: CalendarBlock[]): LayoutBlock[] {
   return result;
 }
 
+type GroupOrigPos = { day: number; start: number; end: number };
 type DragState =
-  { kind: "block-move"; blockId: string; origDay: number; origStart: number; origEnd: number; startClientX: number; startClientY: number; hourPx: number; hasMoved: boolean };
+  { kind: "block-move"; blockId: string; origDay: number; origStart: number; origEnd: number; startClientX: number; startClientY: number; hourPx: number; hasMoved: boolean; isMultiSelect: boolean; groupOrigPositions?: Map<string, GroupOrigPos> };
 
 const inputSt: React.CSSProperties = {
   padding: "7px 10px", fontSize: 13, color: "var(--ink)",
@@ -298,9 +309,15 @@ export function CalendarGrid({
   const calendarRef = useRef(calendar);
   useEffect(() => { calendarRef.current = calendar; }, [calendar]);
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [lasso, setLasso] = useState<LassoState | null>(null);
+  const lassoRef = useRef<LassoState | null>(null);
   const [draftBlock, setDraftBlock] = useState<BlockDraft | null>(null);
   const draftBlockRef = useRef<BlockDraft | null>(null);
   useEffect(() => { draftBlockRef.current = draftBlock; }, [draftBlock]);
+  const [draftBlocks, setDraftBlocks] = useState<Map<string, BlockDraft>>(new Map());
+  const draftBlocksRef = useRef<Map<string, BlockDraft>>(new Map());
+  useEffect(() => { draftBlocksRef.current = draftBlocks; }, [draftBlocks]);
 
   const [cursorOverride, setCursorOverride] = useState<string>("");
   const dayColRefs = useRef<(HTMLDivElement | null)[]>(Array(7).fill(null));
@@ -322,6 +339,43 @@ export function CalendarGrid({
     };
 
     const onMove = (e: PointerEvent) => {
+      // Lasso drag
+      const l = lassoRef.current;
+      if (l) {
+        const el = gridBodyRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top + el.scrollTop;
+        const dist = Math.hypot(e.clientX - l.clientStartX, e.clientY - l.clientStartY);
+        const updated: LassoState = {
+          ...l, curX: cx, curY: cy,
+          clientCurX: e.clientX, clientCurY: e.clientY,
+          active: dist > 6,
+        };
+        lassoRef.current = updated;
+        setLasso({ ...updated });
+        if (dist > 6) {
+          setCursorOverride("crosshair");
+          // Live-highlight blocks as lasso grows
+          const minX = Math.min(updated.clientStartX, updated.clientCurX);
+          const maxX = Math.max(updated.clientStartX, updated.clientCurX);
+          const minY = Math.min(updated.clientStartY, updated.clientCurY);
+          const maxY = Math.max(updated.clientStartY, updated.clientCurY);
+          const blockEls = document.querySelectorAll<HTMLElement>("[data-block-id]");
+          const newIds = new Set<string>();
+          for (const el of blockEls) {
+            const r = el.getBoundingClientRect();
+            if (r.left < maxX && r.right > minX && r.top < maxY && r.bottom > minY) {
+              newIds.add(el.dataset.blockId!);
+            }
+          }
+          setSelectedIds(newIds);
+        }
+        return;
+      }
+
+      // Block drag
       const d = dragRef.current;
       if (!d) return;
       if (!d.hasMoved) {
@@ -335,25 +389,81 @@ export function CalendarGrid({
         } else return;
       }
       const deltaH = (e.clientY - d.startClientY) / d.hourPx;
+      const newDay = getDayFromX(e.clientX);
+      const dayDelta = newDay - d.origDay;
       const duration = d.origEnd - d.origStart;
       const ns = snap(Math.max(HOUR_START, Math.min(HOUR_END - duration, d.origStart + deltaH)));
-      const draft: BlockDraft = { id: d.blockId, day: getDayFromX(e.clientX), start: ns, end: ns + duration };
+      const draft: BlockDraft = { id: d.blockId, day: newDay, start: ns, end: ns + duration };
       draftBlockRef.current = draft;
       setDraftBlock({ ...draft });
+      // Group drag: apply same delta to all selected blocks
+      if (d.groupOrigPositions?.size) {
+        const newDrafts = new Map<string, BlockDraft>();
+        for (const [id, orig] of d.groupOrigPositions) {
+          const dur = orig.end - orig.start;
+          const s = snap(Math.max(HOUR_START, Math.min(HOUR_END - dur, orig.start + deltaH)));
+          newDrafts.set(id, { id, day: Math.max(0, Math.min(6, orig.day + dayDelta)), start: s, end: s + dur });
+        }
+        draftBlocksRef.current = newDrafts;
+        setDraftBlocks(new Map(newDrafts));
+      }
     };
 
     const onUp = () => {
+      // Finalize lasso
+      const l = lassoRef.current;
+      if (l) {
+        if (l.active) {
+          const minX = Math.min(l.clientStartX, l.clientCurX);
+          const maxX = Math.max(l.clientStartX, l.clientCurX);
+          const minY = Math.min(l.clientStartY, l.clientCurY);
+          const maxY = Math.max(l.clientStartY, l.clientCurY);
+          const blockEls = document.querySelectorAll<HTMLElement>("[data-block-id]");
+          const newIds = new Set<string>();
+          for (const el of blockEls) {
+            const r = el.getBoundingClientRect();
+            if (r.left < maxX && r.right > minX && r.top < maxY && r.bottom > minY) {
+              newIds.add(el.dataset.blockId!);
+            }
+          }
+          setSelectedIds(newIds);
+        }
+        lassoRef.current = null;
+        setLasso(null);
+        setCursorOverride("");
+        return;
+      }
+
       const d = dragRef.current;
       if (!d) return;
       if (!d.hasMoved) {
-        const block = allBlocksRef.current.find(b => b.id === d.blockId);
-        const orig = calendarRef.current?.blocks.find(tb => tb.id === d.blockId);
-        if (block) setSidebarState({ calBlock: block, orig });
+        if (d.isMultiSelect) {
+          setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(d.blockId)) next.delete(d.blockId);
+            else next.add(d.blockId);
+            return next;
+          });
+          setSidebarState(null);
+        } else {
+          setSelectedIds(new Set());
+          const block = allBlocksRef.current.find(b => b.id === d.blockId);
+          const orig = calendarRef.current?.blocks.find(tb => tb.id === d.blockId);
+          if (block) setSidebarState({ calBlock: block, orig });
+        }
       } else {
-        const draft = draftBlockRef.current;
-        if (draft) onBlockMoveRef.current?.(draft.id, draft.day, draft.start, draft.end);
+        if (d.groupOrigPositions?.size) {
+          // Commit all group blocks
+          for (const [id, draft] of draftBlocksRef.current) {
+            onBlockMoveRef.current?.(id, draft.day, draft.start, draft.end);
+          }
+        } else {
+          const draft = draftBlockRef.current;
+          if (draft) onBlockMoveRef.current?.(draft.id, draft.day, draft.start, draft.end);
+        }
       }
       setDraftBlock(null); draftBlockRef.current = null;
+      setDraftBlocks(new Map()); draftBlocksRef.current = new Map();
       dragRef.current = null;
       setCursorOverride("");
     };
@@ -370,6 +480,15 @@ export function CalendarGrid({
 
   const startBlockDrag = (e: React.PointerEvent, block: CalendarBlock) => {
     e.stopPropagation();
+    const isGroupMember = selectedIds.has(block.id) && selectedIds.size > 1;
+    const groupOrigPositions: Map<string, GroupOrigPos> | undefined = isGroupMember
+      ? new Map(
+          [...selectedIds].flatMap(id => {
+            const b = allBlocksRef.current.find(bl => bl.id === id);
+            return b ? [[id, { day: b.day, start: b.start, end: b.end }]] : [];
+          })
+        )
+      : undefined;
     dragRef.current = {
       kind: "block-move",
       blockId: block.id,
@@ -379,7 +498,9 @@ export function CalendarGrid({
       startClientX: e.clientX,
       startClientY: e.clientY,
       hourPx: hourPxRef.current,
-      hasMoved: false
+      hasMoved: false,
+      isMultiSelect: e.metaKey || e.ctrlKey,
+      groupOrigPositions,
     };
   };
 
@@ -515,7 +636,26 @@ export function CalendarGrid({
       </div>
 
       {/* ── Grid body ───────────────────────────────────────────────────── */}
-      <div ref={gridBodyRef} style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative" }} className="scroll">
+      <div
+        ref={gridBodyRef}
+        style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative" }}
+        className="scroll"
+        onPointerDown={(e) => {
+          if ((e.target as HTMLElement).closest("[data-block]")) return;
+          const el = gridBodyRef.current!;
+          const rect = el.getBoundingClientRect();
+          const sx = e.clientX - rect.left;
+          const sy = e.clientY - rect.top + el.scrollTop;
+          const l: LassoState = {
+            startX: sx, startY: sy, curX: sx, curY: sy,
+            clientStartX: e.clientX, clientStartY: e.clientY,
+            clientCurX: e.clientX, clientCurY: e.clientY,
+            active: false,
+          };
+          lassoRef.current = l;
+          setLasso({ ...l });
+        }}
+      >
         <div style={{ display: "grid", gridTemplateColumns: gridCols }}>
 
           {/* Time labels column */}
@@ -552,6 +692,12 @@ export function CalendarGrid({
                   height: totalHeight,
                   background: isWeekend ? "color-mix(in oklab, var(--bg-sunken) 22%, transparent)" : "transparent",
                 }}
+                onPointerUp={(e) => {
+                  if (!(e.target as HTMLElement).closest("[data-block]")) {
+                    setSidebarState(null);
+                    setSelectedIds(new Set());
+                  }
+                }}
               >
                 {/* Hour grid lines */}
                 {Array.from({ length: hours }).map((_, i) => (
@@ -577,15 +723,18 @@ export function CalendarGrid({
                     const globalIdx = blocks.findIndex(bl => bl.id === b.id);
                     if (globalIdx < 0 || globalIdx >= visibleCount) return null;
                   }
-                  const draft = draftBlock?.id === b.id ? draftBlock : null;
+                  const draft = draftBlocks.get(b.id) ?? (draftBlock?.id === b.id ? draftBlock : null);
                   const dispStart = draft?.start ?? b.start;
                   const dispEnd = draft?.end ?? b.end;
+                  // During group drag, show block in its draft day column
+                  const dispDay = draft?.day ?? b.day;
+                  if (dispDay !== dayIdx) return null;
                   const top = (dispStart - HOUR_START) * hourPx;
                   const height = (dispEnd - dispStart) * hourPx;
                   const col = draft ? 0 : b.col;
                   const numCols = draft ? 1 : b.numCols;
                   const delayIdx = isMeal ? 0 : blocks.findIndex(bl => bl.id === b.id);
-                  const isSelected = selectedId === b.id || sidebarState?.calBlock.id === b.id;
+                  const isSelected = selectedIds.has(b.id) || selectedId === b.id || sidebarState?.calBlock.id === b.id;
 
                   return (
                     <div key={b.id} data-block="">
@@ -595,6 +744,7 @@ export function CalendarGrid({
                         selected={isSelected} delayIdx={delayIdx}
                         isDragging={!!draft}
                         onStartDrag={e => startBlockDrag(e, b)}
+                        blockId={b.id}
                       />
                     </div>
                   );
@@ -612,20 +762,48 @@ export function CalendarGrid({
           })}
         </div>
 
-        {/* Block sidebar */}
-        {sidebarState && (
-          <BlockSidebar
-            key={sidebarState.calBlock.id}
-            calBlock={sidebarState.calBlock}
-            orig={sidebarState.orig}
-            isWeekend={sidebarState.calBlock.day >= WEEKEND_START}
-            onClose={() => setSidebarState(null)}
-            onRequestChange={(block) => { onBlockClick(block); setSidebarState(null); }}
-            onUpdate={(id, updates) => { onUpdateBlock?.(id, updates); setSidebarState(null); }}
-            onDelete={(id) => { onDeleteBlock?.(id); setSidebarState(null); }}
-          />
+        {/* Lasso selection box — absolute inside scroll container, so coordinates match */}
+        {lasso?.active && (
+          <div style={{
+            position: "absolute",
+            left: Math.min(lasso.startX, lasso.curX),
+            top: Math.min(lasso.startY, lasso.curY),
+            width: Math.abs(lasso.curX - lasso.startX),
+            height: Math.abs(lasso.curY - lasso.startY),
+            background: "color-mix(in oklab, var(--tum) 10%, transparent)",
+            border: "1.5px solid color-mix(in oklab, var(--tum) 55%, transparent)",
+            borderRadius: 4,
+            pointerEvents: "none",
+            zIndex: 50,
+          }} />
         )}
       </div>
+
+      {/* Block sidebar — outside scroll container so it stays visible when scrolled */}
+      {sidebarState && (
+        <BlockSidebar
+          key={sidebarState.calBlock.id}
+          calBlock={sidebarState.calBlock}
+          orig={sidebarState.orig}
+          isWeekend={sidebarState.calBlock.day >= WEEKEND_START}
+          onClose={() => setSidebarState(null)}
+          onRequestChange={(block) => { onBlockClick(block); setSidebarState(null); }}
+          onUpdate={(id, updates) => { onUpdateBlock?.(id, updates); setSidebarState(null); }}
+          onDelete={(id) => { onDeleteBlock?.(id); setSidebarState(null); }}
+        />
+      )}
+
+      {/* Multi-select action bar */}
+      {selectedIds.size > 0 && (
+        <MultiSelectBar
+          count={selectedIds.size}
+          onDelete={() => {
+            selectedIds.forEach(id => onDeleteBlock?.(id));
+            setSelectedIds(new Set());
+          }}
+          onClear={() => setSelectedIds(new Set())}
+        />
+      )}
 
       {/* Create block modal */}
       {createModal && (
@@ -642,16 +820,45 @@ export function CalendarGrid({
   );
 }
 
+/* ── Multi-select action bar ──────────────────────────────────────────────── */
+
+function MultiSelectBar({ count, onDelete, onClear }: { count: number; onDelete: () => void; onClear: () => void }) {
+  return (
+    <div style={{
+      position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)",
+      display: "flex", alignItems: "center", gap: 10,
+      background: "var(--ink)", color: "#fff",
+      padding: "10px 16px", borderRadius: 12,
+      boxShadow: "0 8px 32px color-mix(in oklab, var(--ink) 28%, transparent)",
+      fontSize: 13, fontWeight: 500,
+      animation: "fadeUp 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
+      zIndex: 30, whiteSpace: "nowrap",
+    }}>
+      <span style={{ color: "color-mix(in oklab, #fff 65%, transparent)", fontWeight: 400 }}>{count} block{count !== 1 ? "s" : ""} selected</span>
+      <div style={{ width: 1, height: 16, background: "color-mix(in oklab, #fff 20%, transparent)" }}/>
+      <button
+        onClick={onDelete}
+        style={{ background: "oklch(50% 0.18 25)", border: "none", color: "#fff", padding: "5px 12px", borderRadius: 8, fontSize: 12.5, fontWeight: 500, cursor: "pointer" }}
+      >Delete</button>
+      <button
+        onClick={onClear}
+        style={{ background: "transparent", border: "1px solid color-mix(in oklab, #fff 25%, transparent)", color: "color-mix(in oklab, #fff 75%, transparent)", padding: "4px 10px", borderRadius: 8, fontSize: 12.5, cursor: "pointer" }}
+      >Clear</button>
+    </div>
+  );
+}
+
 /* ── Block component ──────────────────────────────────────────────────────── */
 
 function Block({
   b, blockStyle, top, height, col, numCols,
-  selected, delayIdx, isDragging, onStartDrag,
+  selected, delayIdx, isDragging, onStartDrag, blockId,
 }: {
   b: CalendarBlock; blockStyle: BlockStyle;
   top: number; height: number; col: number; numCols: number;
   selected: boolean; delayIdx: number; isDragging?: boolean;
   onStartDrag: (e: React.PointerEvent) => void;
+  blockId: string;
 }) {
   const [hov, setHov] = useState(false);
   const meta = KIND_META[b.kind];
@@ -666,6 +873,7 @@ function Block({
 
   return (
     <div
+      data-block-id={blockId}
       style={{
         position: "absolute",
         top: top + 2,
