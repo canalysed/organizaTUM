@@ -31,7 +31,7 @@ function formatSchedule(blocks: TimeBlock[]): string {
     .join("\n\n");
 }
 
-export function refinementProposePrompt(
+export function refinementPrompt(
   calendar: WeeklyCalendar,
   request: RefinementRequest,
   userProfile: UserProfile | null,
@@ -50,7 +50,7 @@ Weekend preference: ${userProfile.weekendPreference}
 Courses: ${userProfile.courses.map((c) => c.courseName ?? c.courseId).join(", ") || "see schedule"}`
     : `Student: ${studentName}`;
 
-  return `You are a scheduling assistant for a TUM student. You have full visibility of their weekly schedule and profile.
+  return `You are a scheduling assistant for a TUM student. You have full visibility of their weekly schedule and tools to edit it.
 
 ${profileSection}
 
@@ -59,43 +59,22 @@ ${scheduleText}
 
 The student says: "${request.message}"
 
-DECIDE which case applies:
+If this is an INFORMATIONAL question (e.g. "what do I have on Monday?", "which courses am I taking?"):
+Use listBlocks to get current block IDs if needed, then answer directly. Be concise and friendly. Do NOT modify the calendar.
 
-CASE 1 — Informational query (e.g. "what do I have on Monday?", "how many study hours?", "which courses am I taking?", "show me my schedule"):
-Answer directly from the schedule above. Be concise and friendly. Do NOT propose changes. Do NOT ask for confirmation.
+If this is a REQUEST TO CHANGE OR ADD something:
+Use the available tools to apply the changes immediately — no confirmation needed.
+- Use listBlocks to get block IDs before moving/removing anything
+- Use addBlock to add new blocks (study sessions, meals, breaks, etc.)
+- Use moveBlock or removeBlock for adjustments
+- Make all changes in one response
+After applying, confirm briefly what you did (one sentence).
 
-CASE 2 — Modification request (e.g. "add a study session", "move my lunch break", "remove the exercise block"):
-Describe specifically what you would change: which blocks, new times/days, and why it fits the student's preferences. Then end with exactly one confirmation question such as "Shall I apply these changes?" Do not make any changes yet.
-
-Rules if proposing changes:
-- Never move or remove blocks marked (fixed) — those are lectures and Uebungen
+Rules you must always follow:
+- Never move or remove blocks marked (fixed) — those are official lectures and Uebungen
 - No time overlaps on the same day
 - Respect wake time ${userProfile?.wakeUpTime ?? "08:00"} and sleep time ${userProfile?.sleepTime ?? "23:00"}
 - Max ${userProfile?.maxDailyStudyHours ?? 6}h study per day
+- If adding study sessions, distribute them sensibly around existing lectures
 Do not use em dashes (—).`;
-}
-
-export function refinementApplyPrompt(
-  calendar: WeeklyCalendar,
-  proposal: string,
-): string {
-  return `You are a scheduling assistant. The student confirmed the following changes to their weekly schedule.
-
-Current schedule: ${calendar.blocks.length} blocks, version ${calendar.metadata.version}.
-
-Your previous proposal (which the student approved):
-"${proposal}"
-
-Apply exactly those changes now using the available calendar tools. Use listBlocks first if you need block IDs. After applying, confirm what you did in one short friendly sentence. Do not use em dashes (—).
-
-Rules that must hold after your changes:
-- Blocks marked isFixed: true are lectures — never move or remove them
-- No time overlaps allowed on the same day
-- Daily study load must stay at or below 10 hours`;
-}
-
-export function refinementRejectedPrompt(): string {
-  return `You are a scheduling assistant. The student did not want the changes you proposed.
-
-Ask them what they would prefer instead — in one short, friendly sentence. Do not suggest alternatives unprompted; let them guide you. Do not use em dashes (—).`;
 }

@@ -21,10 +21,6 @@ import type {
 
 export type { AgentStreamEvent };
 
-function isRawCsvCalendar(calendar: WeeklyCalendar): boolean {
-  const types = new Set(calendar.blocks.map((b) => b.type));
-  return !types.has("study") && !types.has("meal") && !types.has("break") && !types.has("leisure");
-}
 
 function isProfileComplete(profile: UserProfile | null): boolean {
   return (profile?.courses.length ?? 0) > 0;
@@ -35,11 +31,7 @@ function routeFromStart(state: AgentState): string {
     // No calendar: skip onboarding if profile already complete (signup filled it in)
     return isProfileComplete(state.userProfile) ? "analysis" : "onboarding";
   }
-  // Raw CSV calendar (only lectures/übungen): build the full schedule
-  if (isRawCsvCalendar(state.calendar) && isProfileComplete(state.userProfile)) {
-    return state.courseAnalysis ? "scheduling" : "analysis";
-  }
-  // Full calendar with study/meal blocks: user wants to refine
+  // Calendar exists (raw CSV or full schedule) — always go to refinement
   return "refinement";
 }
 
