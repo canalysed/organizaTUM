@@ -90,7 +90,12 @@ export async function refinementNode(
     messages: [
       {
         role: "system",
-        content: refinementProposePrompt(state.calendar, state.refinementRequest),
+        content: refinementProposePrompt(
+          state.calendar,
+          state.refinementRequest,
+          state.userProfile,
+          state.identityName,
+        ),
       },
       { role: "user", content: state.refinementRequest.message },
     ],
