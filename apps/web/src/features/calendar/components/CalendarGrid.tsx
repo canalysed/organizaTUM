@@ -750,7 +750,7 @@ export function CalendarGrid({
                   );
                 })}
 
-                {/* Current time indicator */}
+                {/* Current time indicator! */}
                 {dayIdx === todayIdx && nowTop >= 0 && nowTop <= totalHeight && (
                   <div style={{ position: "absolute", left: 0, right: 0, top: nowTop, pointerEvents: "none", zIndex: 6 }}>
                     <div style={{ position: "absolute", left: -1, top: -5, width: 10, height: 10, borderRadius: "50%", background: "var(--tum)" }}/>
