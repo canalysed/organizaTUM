@@ -1,5 +1,5 @@
 import { StateGraph, END } from "@langchain/langgraph";
-import { AgentStateAnnotation, type AgentState } from "./state";
+import { AgentStateAnnotation, type AgentState, type RefinementMode } from "./state";
 import { onboardingNode } from "./nodes/onboarding";
 import { analysisNode } from "./nodes/analysis";
 import { schedulingNode } from "./nodes/scheduling";
@@ -22,8 +22,26 @@ import type {
 
 export type { AgentStreamEvent };
 
+function isRawCsvCalendar(calendar: WeeklyCalendar): boolean {
+  const types = new Set(calendar.blocks.map((b) => b.type));
+  return !types.has("study") && !types.has("meal") && !types.has("break") && !types.has("leisure");
+}
+
+function isProfileComplete(profile: UserProfile | null): boolean {
+  return (profile?.courses.length ?? 0) > 0;
+}
+
 function routeFromStart(state: AgentState): string {
-  return state.calendar ? "refinement" : "onboarding";
+  if (!state.calendar) {
+    // No calendar: skip onboarding if profile already complete (signup filled it in)
+    return isProfileComplete(state.userProfile) ? "analysis" : "onboarding";
+  }
+  // Raw CSV calendar (only lectures/übungen): build the full schedule
+  if (isRawCsvCalendar(state.calendar) && isProfileComplete(state.userProfile)) {
+    return state.courseAnalysis ? "scheduling" : "analysis";
+  }
+  // Full calendar with study/meal blocks: user wants to refine
+  return "refinement";
 }
 
 function routeFromOnboarding(state: AgentState): string {
@@ -45,8 +63,13 @@ const graph = new StateGraph(AgentStateAnnotation)
   .addNode("scheduling", schedulingNode)
   .addNode("refinement", refinementNode)
   .addNode("leisure", leisureNode)
-  .addConditionalEdges("__start__", routeFromStart, ["onboarding", "refinement"])
-  .addConditionalEdges("onboarding", routeFromOnboarding, ["analysis", END])
+  .addConditionalEdges("__start__", routeFromStart, [
+    "onboarding",
+    "analysis",
+    "scheduling",
+    "refinement",
+  ])
+  .addConditionalEdges("onboarding", routeFromOnboarding, ["analysis", "scheduling", END])
   .addEdge("analysis", "scheduling")
   .addConditionalEdges("scheduling", routeFromScheduling, ["refinement", "leisure"])
   .addConditionalEdges("refinement", routeFromRefinement, ["refinement", END])
@@ -58,7 +81,7 @@ const NODE_THINKING: Record<string, string> = {
   onboarding: "Getting to know you...",
   analysis: "Analyzing your courses...",
   scheduling: "Building your weekly schedule...",
-  refinement: "Adjusting your calendar...",
+  refinement: "Working on your calendar...",
   leisure: "Finding activities for you...",
 };
 
@@ -76,6 +99,8 @@ export async function runGraph(
     courseAnalysis?: CourseAnalysis[];
     calendar?: WeeklyCalendar;
     refinementRequest?: RefinementRequest;
+    refinementMode?: RefinementMode;
+    lastAssistantMessage?: string | null;
     identityName?: string | null;
     sessionId?: string | null;
   },
@@ -88,6 +113,8 @@ export async function runGraph(
     courseAnalysis: request.courseAnalysis ?? null,
     calendar: request.calendar ?? null,
     refinementRequest: request.refinementRequest ?? null,
+    refinementMode: request.refinementMode ?? "propose",
+    lastAssistantMessage: request.lastAssistantMessage ?? null,
     identityName: request.identityName ?? null,
     sessionId: request.sessionId ?? null,
     tumCourses: request.tumCourses ?? null,

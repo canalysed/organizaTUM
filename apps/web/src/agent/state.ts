@@ -10,6 +10,8 @@ import type {
   Course,
 } from "@organizaTUM/shared";
 
+export type RefinementMode = "propose" | "apply" | "rejected";
+
 export const AgentStateAnnotation = Annotation.Root({
   messages: Annotation<ChatMessage[]>({
     reducer: (existing, incoming) => existing.concat(incoming),
@@ -32,6 +34,14 @@ export const AgentStateAnnotation = Annotation.Root({
     default: () => null,
   }),
   refinementRequest: Annotation<RefinementRequest | null>({
+    reducer: (_existing, incoming) => incoming,
+    default: () => null,
+  }),
+  refinementMode: Annotation<RefinementMode>({
+    reducer: (_existing, incoming) => incoming,
+    default: () => "propose" as RefinementMode,
+  }),
+  lastAssistantMessage: Annotation<string | null>({
     reducer: (_existing, incoming) => incoming,
     default: () => null,
   }),

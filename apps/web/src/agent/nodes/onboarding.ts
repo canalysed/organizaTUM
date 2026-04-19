@@ -12,7 +12,13 @@ export async function onboardingNode(
     mode: "tool",
     schema: OnboardingResponseSchema,
     messages: [
-      { role: "system", content: onboardingPrompt(state.identityName ?? undefined) },
+      {
+        role: "system",
+        content: onboardingPrompt(
+          state.identityName ?? undefined,
+          state.userProfile,
+        ),
+      },
       ...state.messages.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,

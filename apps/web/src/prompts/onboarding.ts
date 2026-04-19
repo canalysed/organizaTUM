@@ -1,28 +1,64 @@
-export function onboardingPrompt(knownName?: string): string {
-  const nameContext = knownName
-    ? `\n\nIMPORTANT: This student's name is "${knownName}". Do NOT ask for their name — greet them by name and start directly from step 2.`
-    : "";
-  return `You are OrganizaTUM, an AI scheduling assistant for TUM (Technical University of Munich) students.
+import type { UserProfile } from "@organizaTUM/shared";
 
-Your goal is to gather all information needed to build a personalized weekly schedule. Collect the following, one topic at a time — never ask multiple questions at once:
-1. Student's name${knownName ? ` (already known: ${knownName} — skip this)` : ""}
-2. Courses they are taking this semester (from TUM's course catalog)
-3. Their learning style (spaced repetition or deep focused sessions)
-4. Fixed commitments (sports, clubs, jobs, etc.)
-5. Mensa preferences (dietary restrictions, preferred meal times)
-6. Leisure interests (sports, cinema, events, etc.)
-7. Study strengths and weaknesses
-8. Wake-up time and preferred time of day to study (morning / afternoon / evening)
-9. Weekend preference: keep weekends completely free, do light studying (max 2h/day), or treat them like regular study days${nameContext}
+export function onboardingPrompt(
+  knownName?: string,
+  existingProfile?: Partial<UserProfile> | null,
+): string {
+  const hasCourses = (existingProfile?.courses?.length ?? 0) > 0;
+  const hasLearningStyle =
+    existingProfile?.learningStyle && existingProfile.learningStyle !== "unknown";
+  const hasSchedulePrefs =
+    existingProfile?.wakeUpTime && existingProfile.wakeUpTime !== "08:00";
+  const hasWeekendPref = !!existingProfile?.weekendPreference;
 
-Be warm, concise, and encouraging. Never use em dashes (—) in your messages. When you have collected all required fields, set isComplete to true and populate profileSoFar completely.
+  const knownFields: string[] = [];
+  if (knownName) knownFields.push(`name: "${knownName}"`);
+  if (hasCourses)
+    knownFields.push(
+      `courses: ${existingProfile!.courses!.map((c) => c.courseName).join(", ")}`,
+    );
+  if (hasLearningStyle)
+    knownFields.push(`learning style: ${existingProfile!.learningStyle}`);
+  if (hasSchedulePrefs)
+    knownFields.push(
+      `wake: ${existingProfile!.wakeUpTime}, sleep: ${existingProfile!.sleepTime}, preferred study time: ${existingProfile!.preferredStudyTime}`,
+    );
+  if (hasWeekendPref)
+    knownFields.push(`weekend preference: ${existingProfile!.weekendPreference}`);
 
-For fields 8 and 9, map answers naturally:
+  const alreadyKnownSection =
+    knownFields.length > 0
+      ? `\n\nALREADY KNOWN — do NOT ask about these again:\n${knownFields.map((f) => `- ${f}`).join("\n")}`
+      : "";
+
+  const remainingFields: string[] = [];
+  if (!hasCourses) remainingFields.push("courses they are taking this semester");
+  if (!hasLearningStyle)
+    remainingFields.push("learning style (spaced repetition or deep focused sessions)");
+  if (!hasSchedulePrefs)
+    remainingFields.push("wake-up time and preferred time of day to study");
+  if (!hasWeekendPref)
+    remainingFields.push("weekend preference (free / light studying / full study days)");
+  remainingFields.push("fixed commitments (sports, jobs, clubs — if any)");
+  remainingFields.push("leisure interests (sports, cinema, events — optional)");
+
+  const remainingSection =
+    remainingFields.length > 0
+      ? `\n\nSTILL NEEDED (ask one at a time):\n${remainingFields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`
+      : "\n\nAll required information is already known. Set isComplete to true immediately and populate profileSoFar fully.";
+
+  return `You are OrganizaTUM, an AI scheduling assistant for TUM students. Your job is to collect the missing information needed to build a personalized weekly schedule — then set isComplete to true.
+
+Be direct and friendly. Ask ONE question at a time. Never ask about something already known.${alreadyKnownSection}${remainingSection}
+
+Mapping rules:
 - "I wake up at 7" → wakeUpTime: "07:00"
-- "I prefer studying in the morning" → preferredStudyTime: "morning"
-- "I want weekends free" → weekendPreference: "free"
-- "I do light studying on weekends" → weekendPreference: "light"
-- "I study on weekends too" → weekendPreference: "full"
+- "morning person" → preferredStudyTime: "morning"
+- "weekends free" → weekendPreference: "free"
+- "light on weekends" → weekendPreference: "light"
+- "study on weekends" → weekendPreference: "full"
 
-Respond ONLY in valid JSON matching the provided schema. No markdown, no preamble, no explanation outside the JSON.`;
+When all required fields are collected (or already known), set isComplete: true and populate profileSoFar completely — use the already-known values for fields you did not ask about.
+
+Respond ONLY in valid JSON matching the provided schema. No markdown, no preamble.`;
 }
